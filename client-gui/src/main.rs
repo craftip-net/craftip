@@ -1,11 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 mod backend;
 mod gui_channel;
+mod updater;
 
 use anyhow::{Context, Result};
 use std::sync::{Arc, Mutex};
+use std::thread;
 
-use eframe::egui::{CentralPanel, Color32, Label, Layout, RichText, TextEdit, Ui};
+use eframe::egui::{CentralPanel, Color32, IconData, Label, Layout, RichText, TextEdit, Ui, ViewportCommand};
 use eframe::emath::Align;
 use eframe::{egui, CreationContext, Storage, Theme};
 use tokio::sync::mpsc;
@@ -24,15 +26,24 @@ pub async fn main() -> Result<(), eframe::Error> {
         .with_thread_ids(false)
         .with_target(false)
         .finish();
-
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_inner_size([500.0, 400.0]);
+    viewport.icon = build_icon();
     let options = eframe::NativeOptions {
         default_theme: Theme::Light,
-        viewport: egui::ViewportBuilder::default().with_inner_size([500.0, 400.0]),
+        viewport,
         ..Default::default()
     };
 
+    thread::spawn(move || {
+            let mut updater = updater::Updater::default();
+            if updater.check_for_update().unwrap() {
+                updater.update().unwrap();
+                updater.restart().unwrap();
+            }
+    });
     eframe::run_native(
         "CraftIP",
         options,
@@ -41,6 +52,19 @@ pub async fn main() -> Result<(), eframe::Error> {
             Box::new(MyApp::new(cc))
         }),
     )
+}
+
+fn build_icon() -> Option<Arc<IconData>> {
+    let icon = include_bytes!("../../build/resources/logo-mac.png");
+    let image = image::load_from_memory(icon)
+        .expect("Image could not be loaded from memory")
+        .into_rgba8();
+    let (width, height) = image.dimensions();
+    Some(Arc::new(IconData{
+        rgba: image.into_raw(),
+        width,
+        height,
+    }))
 }
 
 pub struct GuiState {
@@ -133,7 +157,7 @@ impl eframe::App for MyApp {
         // draw ui
         CentralPanel::default().show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
-                ui.heading("CraftIP");
+                ui.heading("CraftIP debug");
                 if state.loading {
                     ui.spinner();
                 }
