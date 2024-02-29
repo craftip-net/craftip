@@ -7,9 +7,7 @@ use anyhow::{Context, Result};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use eframe::egui::{
-    CentralPanel, Color32, IconData, Label, Layout, RichText, TextEdit, Ui, ViewportCommand,
-};
+use eframe::egui::{CentralPanel, Color32, IconData, Label, Layout, RichText, TextEdit, Ui};
 use eframe::emath::Align;
 use eframe::{egui, CreationContext, Storage, Theme};
 use tokio::sync::mpsc;

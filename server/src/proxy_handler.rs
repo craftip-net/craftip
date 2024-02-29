@@ -108,7 +108,6 @@ impl ProxyClient {
             version: PROTOCOL_VERSION,
         });
         framed.send(resp).await?;
-        let mut feed = 0;
         loop {
             tokio::select! {
                 // forward packets from the minecraft clients
@@ -140,10 +139,6 @@ impl ProxyClient {
                             }
                         };
                         if let Ok(pkg_next) = rx.try_recv() {
-                            feed += 1;
-                            if feed % 100 == 0 {
-                                tracing::info!("feed: {}", feed);
-                            }
                             framed.feed(socket_packet).await?;
                             result = pkg_next;
                         } else {

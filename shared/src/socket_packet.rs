@@ -1,4 +1,3 @@
-use std::io::Write;
 use std::mem::size_of;
 use std::net::SocketAddr;
 

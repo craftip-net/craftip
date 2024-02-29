@@ -21,6 +21,9 @@ pub async fn process_socket_connection(
     socket: TcpStream,
     register: Arc<Mutex<Register>>,
 ) -> Result<(), DistributorError> {
+    socket
+        .set_nodelay(true)
+        .map_err(distributor_error!("could not set nodelay true"))?;
     let mut frames = Framed::new(socket, PacketCodec::new(1024 * 8));
     // In a loop, read data from the socket and write the data back.
     let packet = frames.next().await.ok_or(DistributorError::UnknownError(
