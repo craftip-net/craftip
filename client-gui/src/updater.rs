@@ -1,11 +1,10 @@
 use anyhow::{bail, format_err, Result};
-use std::{env, fs, io, process};
-use std::env::consts::EXE_SUFFIX;
 use reqwest::header;
-use self_update::{cargo_crate_version, Download, Extract, get_target, self_replace, version};
+use self_update::{cargo_crate_version, get_target, self_replace, version, Download, Extract};
 use serde::{Deserialize, Serialize};
 use shared::config::UPDATE_URL;
-
+use std::env::consts::EXE_SUFFIX;
+use std::{env, fs, io, process};
 
 // https://github.com/lichess-org/fishnet/blob/90f12cd532a43002a276302738f916210a2d526d/src/main.rs
 #[cfg(unix)]
@@ -29,10 +28,9 @@ fn exec(command: &mut process::Command) -> io::Error {
     }
 }
 
-
 #[derive(Default)]
 pub struct Updater {
-    release: Option<LatestRelease>
+    release: Option<LatestRelease>,
 }
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LatestRelease {
@@ -52,18 +50,20 @@ impl Updater {
         //set_ssl_vars!();
         let api_url = UPDATE_URL.to_string();
 
-        let resp = reqwest::blocking::Client::new()
-            .get(&api_url)
-            .send()?;
+        let resp = reqwest::blocking::Client::new().get(&api_url).send()?;
         if !resp.status().is_success() {
-            bail!("api request failed with status: {:?} - for: {:?}",
+            bail!(
+                "api request failed with status: {:?} - for: {:?}",
                 resp.status(),
                 api_url
             )
         }
         let release = resp.json::<LatestRelease>()?;
 
-        println!("New release found! v{} --> v{}", current_version, release.version);
+        println!(
+            "New release found! v{} --> v{}",
+            current_version, release.version
+        );
 
         if !version::bump_is_compatible(&current_version, &release.version)? {
             println!("New release is a bit tooooo new compatible");
@@ -85,8 +85,10 @@ impl Updater {
         let release = self.release.as_ref().unwrap();
         println!("v{:?}", release);
 
-
-        let target_asset = release.targets.iter().find(|t| t.target == target)
+        let target_asset = release
+            .targets
+            .iter()
+            .find(|t| t.target == target)
             .ok_or_else(|| format_err!("No release found for target: {}", target))?;
 
         //let prompt_confirmation = !self.no_confirm();
@@ -106,14 +108,13 @@ impl Updater {
         download.set_headers(headers);
         download.show_progress(true);
 
-
         download.download_to(&mut tmp_archive)?;
 
         #[cfg(feature = "signatures")]
         verify_signature(&tmp_archive_path, self.verifying_keys())?;
 
         println!("Extracting archive... ");
-        let name = "client-gui";//self.bin_path_in_archive();
+        let name = "client-gui"; //self.bin_path_in_archive();
         let bin_path_in_archive = format!("{}{}", name.trim_end_matches(EXE_SUFFIX), EXE_SUFFIX);
         Extract::from_source(&tmp_archive_path)
             .extract_file(tmp_archive_dir.path(), &bin_path_in_archive)?;
@@ -130,7 +131,7 @@ impl Updater {
     pub fn restart(&self) -> Result<()> {
         let current_exe = match env::current_exe() {
             Ok(exe) => exe,
-            Err(e) => bail!("Failed to restart process: {:?}", e)
+            Err(e) => bail!("Failed to restart process: {:?}", e),
         };
         println!("Restarting process: {:?}", current_exe);
         exec(process::Command::new(current_exe).args(std::env::args().into_iter().skip(1)));

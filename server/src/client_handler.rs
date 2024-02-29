@@ -66,8 +66,17 @@ impl MCClient {
             tokio::select! {
                 res = self.rx.recv() => {
                     match res {
-                        Some(pkg) => {
-                            self.frames.send(SocketPacket::from(pkg)).await.map_err(distributor_error!("could not send packet"))?;
+                        Some(mut pkg) => {
+                            loop {
+                                let packet = SocketPacket::from(pkg);
+                                if let Ok(pkg_next) = self.rx.try_recv() {
+                                    self.frames.feed(packet).await.map_err(distributor_error!("could not feed packet"))?;
+                                    pkg = pkg_next;
+                                } else {
+                                    self.frames.send(packet).await.map_err(distributor_error!("could not send packet"))?;
+                                    break;
+                                }
+                            }
                         }
                         None => {
                             self.need_for_close = false;

@@ -41,6 +41,7 @@ impl ClientConnection {
         let mut mc_server = TcpStream::connect(&self.mc_server)
             .await
             .context(format!("could not connect to {}", &self.mc_server))?;
+        mc_server.set_nodelay(true)?;
         loop {
             tokio::select! {
                 pkg = self.client_rx.recv() => {

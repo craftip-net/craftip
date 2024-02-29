@@ -74,16 +74,10 @@ impl From<ProxyDataPacket> for SocketPacket {
 
 impl SocketPacket {
     pub fn encode(&self) -> Result<Vec<u8>, PacketError> {
-        let mut cursor = CustomCursor::new(vec![]);
         let packet = bincode::serialize(self).map_err(|_| PacketError::EncodingError)?;
         let packet_length = packet.len() as u16;
-        cursor
-            .write_all(&packet_length.to_be_bytes())
-            .expect("encoding error in write_all function");
-        cursor
-            .write_all(&packet)
-            .expect("encoding error in write_all function");
-        Ok(cursor.get_ref()[..cursor.position() as usize].to_vec())
+        let pkg = [packet_length.to_be_bytes().to_vec(), packet].concat();
+        Ok(pkg)
     }
 }
 
@@ -136,5 +130,4 @@ pub enum ClientToProxy {
     Packet(SocketAddr, MinecraftDataPacket),
     AddMinecraftClient(SocketAddr, UnboundedSender<MinecraftDataPacket>),
     RemoveMinecraftClient(SocketAddr),
-    Close,
 }

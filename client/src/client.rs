@@ -4,13 +4,13 @@ use std::time::SystemTime;
 
 use anyhow::{bail, Context, Result};
 use futures::SinkExt;
-use shared::config::PROTOCOL_VERSION;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, timeout};
 use tokio_stream::StreamExt;
 use tokio_util::codec::Framed;
 
+use shared::config::PROTOCOL_VERSION;
 use shared::packet_codec::PacketCodec;
 use shared::proxy::{ProxyAuthenticator, ProxyDataPacket, ProxyHelloPacket};
 use shared::socket_packet::SocketPacket;
@@ -87,6 +87,7 @@ impl Client {
             .map_err(|_| ClientError::MinecraftServerNotFound)?;
         // connect to proxy
         let proxy_stream = TcpStream::connect(format!("{}:25565", &self.server.server)).await?;
+        proxy_stream.set_nodelay(true)?;
         let mut proxy = Framed::new(proxy_stream, PacketCodec::new(1024 * 4));
 
         let hello = SocketPacket::from(ProxyHelloPacket {
@@ -150,21 +151,32 @@ impl Client {
                     }
                 }
                 // send packets to proxy
-               Some(pkg) = to_proxy_rx.recv() => {
-                    //tracing::info!("Sending packet to client: {:?}", pkg);
-                    match pkg {
-                        ClientToProxy::Packet(id, pkg) => {
-                            proxy.send(SocketPacket::from(ProxyDataPacket::new(pkg, id))).await?;
-                        },
-                        ClientToProxy::RemoveMinecraftClient(id) => {
-                            proxy.send(SocketPacket::ProxyDisconnect(id)).await?;
-                            self.state.remove_connection(id);
-                        },
-                        ClientToProxy::Death(msg) => {
-                            bail!(msg);
+                Some(mut pkg) = to_proxy_rx.recv() => {
+                    loop {
+                        let socket_packet = match pkg {
+                            ClientToProxy::Packet(id, pkg) => {
+                                SocketPacket::from(ProxyDataPacket::new(pkg, id))
+                            },
+                            ClientToProxy::RemoveMinecraftClient(id) => {
+                                self.state.remove_connection(id);
+                                SocketPacket::ProxyDisconnect(id)
+                            },
+                            ClientToProxy::Death(msg) => {
+                                bail!(msg);
+                            }
+                        };
+                        // If channel is not exhausted, just feed the socket without sending
+                        if let Ok(pkg_next) = to_proxy_rx.try_recv() {
+                            proxy.feed(socket_packet).await?;
+                            pkg = pkg_next;
+                        } else {
+                            // send and therefore flush socket on last socket in the channel
+                            proxy.send(socket_packet).await?;
+                            break;
                         }
                     }
                 }
+
                 // receive proxy packets
                 result = proxy.next() => {
                     match result {

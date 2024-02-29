@@ -108,37 +108,47 @@ impl ProxyClient {
             version: PROTOCOL_VERSION,
         });
         framed.send(resp).await?;
+        let mut feed = 0;
         loop {
             tokio::select! {
                 // forward packets from the minecraft clients
                 result = rx.recv() => {
-                    let result = match result {
+                    let mut result = match result {
                         Some(result) => result,
                         None => {
                             tracing::info!("client channel closed {}", self.hostname);
                             break
                         }
                     };
-                    match result {
-                        ClientToProxy::Close => {
-                            tracing::info!("closing channel for proxy client {}", self.hostname);
-                            break
-                        },
-                        ClientToProxy::AddMinecraftClient(addr, tx) => {
-                            let client = distributor.insert(addr, tx)?;
-                            framed.send(SocketPacket::ProxyJoin(client.id)).await?;
-                        },
-                        ClientToProxy::Packet(addr, pkg) => {
-                            // if client not found, close connection
-                            let client = distributor.get_by_addr(&addr).ok_or_else(||DistributorError::WrongPacket)?;
-                            let pkg = SocketPacket::from(ProxyDataPacket::new(pkg, client.id));
-                            framed.send(pkg).await?;
-                        },
-                        ClientToProxy::RemoveMinecraftClient(addr) => {
-                            if let Some(client) = distributor.get_by_addr(&addr) {
-                                framed.send(SocketPacket::ProxyDisconnect(client.id)).await?;
+                    'inner: loop {
+                        let socket_packet = match result {
+                            ClientToProxy::AddMinecraftClient(addr, tx) => {
+                                let client = distributor.insert(addr, tx)?;
+                                SocketPacket::ProxyJoin(client.id)
+                            },
+                            ClientToProxy::Packet(addr, pkg) => {
+                                // if client not found, close connection
+                                let client = distributor.get_by_addr(&addr).ok_or_else(||DistributorError::WrongPacket)?;
+                                SocketPacket::from(ProxyDataPacket::new(pkg, client.id))
+                            },
+                            ClientToProxy::RemoveMinecraftClient(addr) => {
+                                if let Some(client) = distributor.get_by_addr(&addr) {
+                                    framed.send(SocketPacket::ProxyDisconnect(client.id)).await?;
+                                }
+                                distributor.remove_by_addr(&addr);
+                                break 'inner;
                             }
-                            distributor.remove_by_addr(&addr);
+                        };
+                        if let Ok(pkg_next) = rx.try_recv() {
+                            feed += 1;
+                            if feed % 100 == 0 {
+                                tracing::info!("feed: {}", feed);
+                            }
+                            framed.feed(socket_packet).await?;
+                            result = pkg_next;
+                        } else {
+                            framed.send(socket_packet).await?;
+                            break;
                         }
                     }
                 }
