@@ -22,7 +22,7 @@ pub async fn main() -> Result<()> {
     let private_key = ServerPrivateKey::default();
     let server = Server {
         server: private_key.get_public_key().get_hostname(),
-        local: "localhost:25564".to_string(),
+        local: "localhost:25565".to_string(),
         auth: ServerAuthentication::Key(private_key),
     };
     tracing::info!("Connecting to server: {}", server.server);
