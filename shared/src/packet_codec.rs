@@ -81,7 +81,7 @@ impl Decoder for PacketCodec {
             _ => SocketPacket::parse_packet(buf, &self.protocol),
         };
         match result {
-            Ok(packet) => Ok(packet).map(Some),
+            Ok(packet) => Ok(Some(packet)),
             Err(PacketError::TooSmall) => Ok(None),
             Err(e) => Err(e),
         }

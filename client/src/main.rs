@@ -30,7 +30,7 @@ pub async fn main() -> Result<()> {
     let (control_tx_new, control_rx) = mpsc::unbounded_channel();
     let (stats_tx, mut stats_rx) = mpsc::unbounded_channel();
 
-    let mut client = Client::new(server, stats_tx, control_rx).await;
+    let mut client = Client::new(server, stats_tx, control_rx);
     // connect
     match client.connect().await {
         Ok(_) => {

@@ -59,7 +59,7 @@ impl Controller {
                             control_tx = Some(control_tx_new);
 
                             let state = self.state.clone();
-                            let mut client = Client::new(server, stats_tx.clone(), control_rx).await;
+                            let mut client = Client::new(server, stats_tx.clone(), control_rx);
                             tokio::spawn(async move {
                                 // connect
                                 match client.connect().await {

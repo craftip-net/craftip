@@ -66,7 +66,7 @@ impl State {
 }
 
 impl Client {
-    pub async fn new(server: Server, stats_tx: StatsTx, control_rx: ControlRx) -> Self {
+    pub fn new(server: Server, stats_tx: StatsTx, control_rx: ControlRx) -> Self {
         let mut state = State::default();
         state.set_stats_tx(stats_tx.clone());
         Client {
