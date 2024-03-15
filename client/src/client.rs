@@ -224,9 +224,3 @@ impl Client {
         }
     }
 }
-
-impl Drop for Client {
-    fn drop(&mut self) {
-        tracing::info!("Proxy client dropped");
-    }
-}
