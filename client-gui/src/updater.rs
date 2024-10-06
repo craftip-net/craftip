@@ -1,16 +1,17 @@
 use anyhow::{bail, format_err, Result};
-use self_update::Extract;
 use semver::Version;
 use shared::config::UPDATE_URL;
 use std::env::consts::EXE_SUFFIX;
 use std::fs::File;
 use std::io::{BufRead, Write};
-use std::{env, io, process};
+use std::{env, fs, io, process};
+use std::path::Path;
 use base64::prelude::*;
 use image::EncodableLayout;
+use reqwest::blocking::Client;
 use ring::digest::{Context, SHA512};
 use ring::signature;
-use crate::updater_proto::{DISTRIBUTION_PUBLIC_KEY, get_bytes_for_signature, LatestRelease, SIGNATURE_SEPARATOR_NONCE};
+use crate::updater_proto::{DISTRIBUTION_PUBLIC_KEY, get_bytes_for_signature, LatestRelease};
 
 // https://github.com/lichess-org/fishnet/blob/90f12cd532a43002a276302738f916210a2d526d/src/main.rs
 #[cfg(unix)]
@@ -45,7 +46,7 @@ impl Updater {
         //set_ssl_vars!();
         let api_url = UPDATE_URL.to_string();
 
-        let resp = reqwest::blocking::Client::new().get(&api_url).send()?;
+        let resp = Client::new().get(&api_url).send()?;
         if !resp.status().is_success() {
             bail!(
                 "api request failed with status: {:?} - for: {:?}",
@@ -61,6 +62,8 @@ impl Updater {
         if new_version {
             println!("New version available: v{}", release.version);
             self.release = Some(release);
+        } else {
+            println!("up to date");
         }
 
         Ok(new_version)
@@ -88,25 +91,14 @@ impl Updater {
                 )
             })?;
 
-        //let prompt_confirmation = !self.no_confirm();
-        println!("\n{} release status:", release.version);
-        println!("  * New exe release: {:?}", target_asset.name);
-        println!("  * New exe download url: {:?}", target_asset.url);
-        println!("\nThe new release will be downloaded/extracted and the existing binary will be replaced.");
 
         let tmp_archive_dir = tempfile::TempDir::new()?;
-        let tmp_archive_path = tmp_archive_dir.path().join(&target_asset.name);
+        let zip_file = tmp_archive_dir.path().join(&target_asset.name);
 
         println!("Downloading...");
-        /*let mut download = Download::from_url(&target_asset.url);
-        let mut headers = header::HeaderMap::new();
-        headers.insert(header::ACCEPT, "application/octet-stream".parse().unwrap());
-        download.set_headers(headers);
-        download.show_progress(true);
-        download.download_to(&mut tmp_archive)?;*/
 
         let resp = reqwest::blocking::get(&target_asset.url).expect("request failed");
-        let mut out = File::create(&tmp_archive_path).expect("failed to create file");
+        let mut out = File::create(&zip_file).expect("failed to create file");
 
         let mut hash = Context::new(&SHA512);
         let mut src = io::BufReader::new(resp);
@@ -125,9 +117,7 @@ impl Updater {
         let hash = hash.finish();
 
         println!("hash of file is: {:x?}", hash.as_ref());
-        //io::copy(&mut body.as_ref(), &mut out).expect("failed to copy content");
-        //io::copy(&mut body.as_bytes(), &mut out).expect("failed to copy content");
-        println!("Downloaded to: {:?}", tmp_archive_path);
+        println!("Downloaded to: {:?}", zip_file);
 
 
         // verify signature + version
@@ -143,9 +133,10 @@ impl Updater {
         println!("Extracting archive... ");
         let name = "client-gui"; //self.bin_path_in_archive();
         let bin_path_in_archive = format!("{}{}", name.trim_end_matches(EXE_SUFFIX), EXE_SUFFIX);
-        Extract::from_source(&tmp_archive_path)
-            .extract_file(tmp_archive_dir.path(), &bin_path_in_archive)?;
         let new_exe = tmp_archive_dir.path().join(&bin_path_in_archive);
+
+        extract_file_from_zip(zip_file.as_path(), &bin_path_in_archive, &new_exe);
+
 
         println!("Done");
         println!("Replacing binary file... ");
@@ -163,4 +154,14 @@ impl Updater {
         exec(process::Command::new(current_exe).args(std::env::args().into_iter().skip(1)));
         Ok(())
     }
+}
+
+
+fn extract_file_from_zip(zip_archive: &Path, binary_in_zip: &str, dest: &Path) {
+    let archive = File::open(zip_archive).unwrap();
+    let mut archive = zip::ZipArchive::new(archive).unwrap();
+    let mut file = archive.by_name(binary_in_zip).unwrap();
+
+    let mut output = File::create(dest).unwrap();
+    io::copy(&mut file, &mut output).unwrap();
 }
