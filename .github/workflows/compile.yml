@@ -10,7 +10,7 @@ jobs:
           arch: [x86_64, aarch64]
       
       name: ${{ matrix.arch }}
-      runs-on: macos-13.1
+      runs-on: macos-14
       steps:
         - run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y
         - name: Add architecture ${{ matrix.arch }}
