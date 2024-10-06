@@ -49,7 +49,7 @@ pub async fn main() -> Result<(), eframe::Error> {
         options,
         Box::new(|cc| {
             // add context to state to redraw from other threads
-            Box::new(MyApp::new(cc))
+            Ok(Box::new(MyApp::new(cc)))
         }),
     )
 }
