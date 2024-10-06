@@ -56,9 +56,9 @@ impl Decoder for PacketCodec {
         if buf.is_empty() {
             return Ok(None);
         }
-        if buf.len() > self.max_length {
+        /*if buf.len() > self.max_length {
             return Err(PacketCodecError::MaxLineLengthExceeded);
-        }
+        }*/
         let result = match self.protocol {
             // first packet
             Protocol::Unknown => {

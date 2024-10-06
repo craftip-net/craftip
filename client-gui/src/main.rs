@@ -2,6 +2,7 @@
 mod backend;
 mod gui_channel;
 mod updater;
+mod updater_proto;
 
 use anyhow::{Context, Result};
 use std::sync::{Arc, Mutex};
@@ -15,6 +16,7 @@ use tokio::sync::mpsc;
 use crate::gui_channel::{GuiTriggeredChannel, GuiTriggeredEvent, ServerState};
 use client::structs::{Server, ServerAuthentication};
 use shared::crypto::ServerPrivateKey;
+use crate::updater::CURRENT_VERSION;
 
 #[tokio::main]
 pub async fn main() -> Result<(), eframe::Error> {
@@ -156,12 +158,13 @@ impl eframe::App for MyApp {
         // draw ui
         CentralPanel::default().show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
-                ui.heading("CraftIP debug");
+                ui.heading("CraftIP");
                 if state.loading {
                     ui.spinner();
                 }
                 ui.with_layout(Layout::right_to_left(Align::TOP), |ui| {
-                    ui.label(RichText::new("pre alpha").color(Color32::RED).small());
+                    ui.label(RichText::new(format!("v{}", CURRENT_VERSION)).small());
+                    #[cfg(debug_assertions)]
                     ui.label(RichText::new(format!("{}", self.frames_rendered)).small());
                 });
             });

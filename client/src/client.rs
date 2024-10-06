@@ -152,6 +152,7 @@ impl Client {
                 }
                 // send packets to proxy
                 Some(mut pkg) = to_proxy_rx.recv() => {
+                    // doing this in a loop to only feed the socket if there are more packets pending to be sent
                     loop {
                         let socket_packet = match pkg {
                             ClientToProxy::Packet(id, pkg) => {
