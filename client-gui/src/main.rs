@@ -10,7 +10,7 @@ use std::thread;
 
 use eframe::egui::{CentralPanel, Color32, IconData, Label, Layout, RichText, TextEdit, Ui};
 use eframe::emath::Align;
-use eframe::{egui, CreationContext, Storage};
+use eframe::{egui, CreationContext, Storage, Renderer};
 use tokio::sync::mpsc;
 
 use crate::gui_channel::{GuiTriggeredChannel, GuiTriggeredEvent, ServerState};
@@ -33,6 +33,7 @@ pub async fn main() -> Result<(), eframe::Error> {
     let mut viewport = egui::ViewportBuilder::default().with_inner_size([500.0, 400.0]);
     viewport.icon = build_icon();
     let options = eframe::NativeOptions {
+        renderer: Renderer::Wgpu,
         viewport,
         ..Default::default()
     };
