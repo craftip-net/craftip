@@ -1,10 +1,16 @@
 use anyhow::{bail, format_err, Result};
-use reqwest::header;
-use self_update::{cargo_crate_version, get_target, self_replace, version, Download, Extract};
-use serde::{Deserialize, Serialize};
+use self_update::Extract;
+use semver::Version;
 use shared::config::UPDATE_URL;
 use std::env::consts::EXE_SUFFIX;
-use std::{env, fs, io, process};
+use std::fs::File;
+use std::io::{BufRead, Write};
+use std::{env, io, process};
+use base64::prelude::*;
+use image::EncodableLayout;
+use ring::digest::{Context, SHA512};
+use ring::signature;
+use crate::updater_proto::{DISTRIBUTION_PUBLIC_KEY, get_bytes_for_signature, LatestRelease, SIGNATURE_SEPARATOR_NONCE};
 
 // https://github.com/lichess-org/fishnet/blob/90f12cd532a43002a276302738f916210a2d526d/src/main.rs
 #[cfg(unix)]
@@ -28,25 +34,14 @@ fn exec(command: &mut process::Command) -> io::Error {
     }
 }
 
+pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[derive(Default)]
 pub struct Updater {
     release: Option<LatestRelease>,
 }
-#[derive(Debug, Serialize, Deserialize)]
-pub struct LatestRelease {
-    version: String,
-    changelog: String,
-    targets: Vec<Target>,
-}
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Target {
-    pub name: String,
-    pub url: String,
-    pub target: String,
-}
 impl Updater {
     pub fn check_for_update(&mut self) -> Result<bool> {
-        let current_version = cargo_crate_version!();
         //set_ssl_vars!();
         let api_url = UPDATE_URL.to_string();
 
@@ -58,27 +53,24 @@ impl Updater {
                 api_url
             )
         }
+        println!("hello from the updater");
         let release = resp.json::<LatestRelease>()?;
 
-        println!(
-            "New release found! v{} --> v{}",
-            current_version, release.version
-        );
+        let new_version = Version::parse(CURRENT_VERSION)? < Version::parse(&release.version)?;
 
-        if !version::bump_is_compatible(&current_version, &release.version)? {
-            println!("New release is a bit tooooo new compatible");
-            //bail!("New release is too new and therefore not compatible");
-        };
-        let new_version = version::bump_is_greater(&current_version, &release.version)?;
-        self.release = Some(release);
+        if new_version {
+            println!("New version available: v{}", release.version);
+            self.release = Some(release);
+        }
 
         Ok(new_version)
     }
     pub fn update(&mut self) -> Result<()> {
-        let target = get_target();
-
-        println!("Checking target-arch... {}", target);
-        println!("Checking current version... v{}", cargo_crate_version!());
+        println!(
+            "Checking target-arch... {}",
+            current_platform::CURRENT_PLATFORM
+        );
+        println!("Checking current version... v{}", CURRENT_VERSION);
 
         println!("Checking latest released version... ");
 
@@ -88,8 +80,13 @@ impl Updater {
         let target_asset = release
             .targets
             .iter()
-            .find(|t| t.target == target)
-            .ok_or_else(|| format_err!("No release found for target: {}", target))?;
+            .find(|t| t.target == current_platform::CURRENT_PLATFORM)
+            .ok_or_else(|| {
+                format_err!(
+                    "No release found for target: {}",
+                    current_platform::CURRENT_PLATFORM
+                )
+            })?;
 
         //let prompt_confirmation = !self.no_confirm();
         println!("\n{} release status:", release.version);
@@ -99,16 +96,46 @@ impl Updater {
 
         let tmp_archive_dir = tempfile::TempDir::new()?;
         let tmp_archive_path = tmp_archive_dir.path().join(&target_asset.name);
-        let mut tmp_archive = fs::File::create(&tmp_archive_path)?;
 
         println!("Downloading...");
-        let mut download = Download::from_url(&target_asset.url);
+        /*let mut download = Download::from_url(&target_asset.url);
         let mut headers = header::HeaderMap::new();
         headers.insert(header::ACCEPT, "application/octet-stream".parse().unwrap());
         download.set_headers(headers);
         download.show_progress(true);
+        download.download_to(&mut tmp_archive)?;*/
 
-        download.download_to(&mut tmp_archive)?;
+        let resp = reqwest::blocking::get(&target_asset.url).expect("request failed");
+        let mut out = File::create(&tmp_archive_path).expect("failed to create file");
+
+        let mut hash = Context::new(&SHA512);
+        let mut src = io::BufReader::new(resp);
+        loop {
+            let n = {
+                let buf = src.fill_buf()?;
+                hash.update(buf);
+                out.write_all(buf)?;
+                buf.len()
+            };
+            if n == 0 {
+                break;
+            }
+            src.consume(n);
+        }
+        let hash = hash.finish();
+
+        println!("hash of file is: {:x?}", hash.as_ref());
+        //io::copy(&mut body.as_ref(), &mut out).expect("failed to copy content");
+        //io::copy(&mut body.as_bytes(), &mut out).expect("failed to copy content");
+        println!("Downloaded to: {:?}", tmp_archive_path);
+
+
+        // verify signature + version
+        let to_be_checked = get_bytes_for_signature(hash.as_ref(), release.version.as_str());
+        let remote_signature = BASE64_STANDARD.decode(target_asset.signature.as_str()).unwrap();
+
+        let public_key = signature::UnparsedPublicKey::new(&signature::ED25519, DISTRIBUTION_PUBLIC_KEY);
+        public_key.verify(to_be_checked.as_bytes(), remote_signature.as_bytes()).unwrap();
 
         #[cfg(feature = "signatures")]
         verify_signature(&tmp_archive_path, self.verifying_keys())?;
@@ -121,7 +148,6 @@ impl Updater {
         let new_exe = tmp_archive_dir.path().join(&bin_path_in_archive);
 
         println!("Done");
-
         println!("Replacing binary file... ");
         self_replace::self_replace(new_exe)?;
         println!("Done");
