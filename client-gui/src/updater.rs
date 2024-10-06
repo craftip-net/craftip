@@ -9,7 +9,6 @@ use std::path::Path;
 use std::time::Instant;
 use base64::prelude::*;
 use image::EncodableLayout;
-use reqwest::blocking::Client;
 use ring::digest::{Context, SHA512};
 use ring::signature;
 use crate::updater_proto::{DISTRIBUTION_PUBLIC_KEY, get_bytes_for_signature, LatestRelease};
@@ -47,7 +46,7 @@ impl Updater {
         //set_ssl_vars!();
         let api_url = UPDATE_URL.to_string();
 
-        let resp = Client::new().get(&api_url).send()?;
+        let resp = ureq::get(&api_url).call()?;
         if !resp.status().is_success() {
             bail!(
                 "api request failed with status: {:?} - for: {:?}",
@@ -56,7 +55,7 @@ impl Updater {
             )
         }
         println!("hello from the updater");
-        let release = resp.json::<LatestRelease>()?;
+        let release = resp.into_body().read_json::<LatestRelease>()?;
 
         let new_version = Version::parse(CURRENT_VERSION)? < Version::parse(&release.version)?;
 
@@ -98,7 +97,12 @@ impl Updater {
 
         println!("Downloading...");
 
-        let resp = reqwest::blocking::get(&target_asset.url).expect("request failed");
+        //let resp = reqwest::blocking::get(&target_asset.url).expect("request failed");
+        let resp = ureq::get(&target_asset.url).call().unwrap();
+        if !resp.status().is_success() {
+            panic!("Request was not successful {:?}", resp);
+        }
+        let resp = resp.into_body().into_reader();
         let mut out = File::create(&archive).expect("failed to create file");
 
         let mut hash = Context::new(&SHA512);
