@@ -20,7 +20,7 @@ jobs:
           shell: bash
           run: |
            cd client-gui
-           cargo build --release --target=${{ matrix.arch }}-apple-darwin
+           PKG_CONFIG_SYSROOT_DIR=/ cargo build --release --target=${{ matrix.arch }}-apple-darwin
         - name: Upload artifact
           uses: actions/upload-artifact@v4
           with:
