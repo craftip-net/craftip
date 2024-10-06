@@ -15,6 +15,8 @@ jobs:
         - run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y
         - name: Add architecture ${{ matrix.arch }}
           run: rustup target add ${{ matrix.arch }}-apple-darwin
+        - name: install lzma
+          run: brew install lzma
         - uses: actions/checkout@v3
         - name: Build application
           shell: bash
