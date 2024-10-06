@@ -33,7 +33,6 @@ pub async fn main() -> Result<(), eframe::Error> {
     let mut viewport = egui::ViewportBuilder::default().with_inner_size([500.0, 400.0]);
     viewport.icon = build_icon();
     let options = eframe::NativeOptions {
-        renderer: Renderer::Wgpu,
         viewport,
         ..Default::default()
     };

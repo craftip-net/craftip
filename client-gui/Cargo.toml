@@ -10,7 +10,7 @@ anyhow = { version = "1.0.78", features = [] }
 tokio = { version = "1.35", features = ["full", "tracing"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.93"
-eframe = { version = "0.27", default-features = false, features = ["persistence", "wgpu", "accesskit", "default_fonts"]}
+eframe = { version = "0.26.2", default-features = false, features = ["persistence", "wgpu", "accesskit", "default_fonts", "glow"]}
 tracing-subscriber = "0.3.18"
 tracing = { version = "0.1.40", features = [] }
 tempfile = "3.9.0"
