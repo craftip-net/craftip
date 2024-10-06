@@ -3,9 +3,10 @@ use semver::Version;
 use shared::config::UPDATE_URL;
 use std::env::consts::EXE_SUFFIX;
 use std::fs::File;
-use std::io::{BufRead, Write};
-use std::{env, fs, io, process};
+use std::io::{BufRead, BufReader, BufWriter, Read, Write};
+use std::{env, io, process};
 use std::path::Path;
+use std::time::Instant;
 use base64::prelude::*;
 use image::EncodableLayout;
 use reqwest::blocking::Client;
@@ -93,15 +94,15 @@ impl Updater {
 
 
         let tmp_archive_dir = tempfile::TempDir::new()?;
-        let zip_file = tmp_archive_dir.path().join(&target_asset.name);
+        let archive = tmp_archive_dir.path().join(&target_asset.name);
 
         println!("Downloading...");
 
         let resp = reqwest::blocking::get(&target_asset.url).expect("request failed");
-        let mut out = File::create(&zip_file).expect("failed to create file");
+        let mut out = File::create(&archive).expect("failed to create file");
 
         let mut hash = Context::new(&SHA512);
-        let mut src = io::BufReader::new(resp);
+        let mut src = BufReader::new(resp);
         loop {
             let n = {
                 let buf = src.fill_buf()?;
@@ -117,7 +118,7 @@ impl Updater {
         let hash = hash.finish();
 
         println!("hash of file is: {:x?}", hash.as_ref());
-        println!("Downloaded to: {:?}", zip_file);
+        println!("Downloaded to: {:?}", archive);
 
 
         // verify signature + version
@@ -127,16 +128,13 @@ impl Updater {
         let public_key = signature::UnparsedPublicKey::new(&signature::ED25519, DISTRIBUTION_PUBLIC_KEY);
         public_key.verify(to_be_checked.as_bytes(), remote_signature.as_bytes()).unwrap();
 
-        #[cfg(feature = "signatures")]
-        verify_signature(&tmp_archive_path, self.verifying_keys())?;
 
         println!("Extracting archive... ");
-        let name = "client-gui"; //self.bin_path_in_archive();
+        let name = "client-gui";
         let bin_path_in_archive = format!("{}{}", name.trim_end_matches(EXE_SUFFIX), EXE_SUFFIX);
         let new_exe = tmp_archive_dir.path().join(&bin_path_in_archive);
 
-        extract_file_from_zip(zip_file.as_path(), &bin_path_in_archive, &new_exe);
-
+        decompress(archive.as_path(), &new_exe);
 
         println!("Done");
         println!("Replacing binary file... ");
@@ -157,11 +155,22 @@ impl Updater {
 }
 
 
-fn extract_file_from_zip(zip_archive: &Path, binary_in_zip: &str, dest: &Path) {
-    let archive = File::open(zip_archive).unwrap();
-    let mut archive = zip::ZipArchive::new(archive).unwrap();
-    let mut file = archive.by_name(binary_in_zip).unwrap();
+fn decompress(source: &Path, dest: &Path) {
+    let start = Instant::now();
+    let archive = File::open(source).unwrap();
+    let archive = BufReader::new(archive);
+    let output = File::create(dest).unwrap();
+    let mut output = BufWriter::new(output);
 
-    let mut output = File::create(dest).unwrap();
-    io::copy(&mut file, &mut output).unwrap();
+    let mut decompressor = lzma::LzmaReader::new_decompressor(archive).unwrap();
+
+    let mut buf = [0u8; 1024];
+    loop {
+        let len = decompressor.read(&mut buf).unwrap();
+        if len == 0 {
+            break;
+        }
+        output.write_all(&buf[..len]).unwrap();
+    }
+    println!("decompression took {}ms", (Instant::now() - start).as_millis());
 }
