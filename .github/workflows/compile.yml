@@ -10,11 +10,13 @@ jobs:
           arch: [x86_64, aarch64]
       
       name: ${{ matrix.arch }}
-      runs-on: macos-12
+      runs-on: macos-latest
       steps:
         - run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y
         - name: Add architecture ${{ matrix.arch }}
           run: rustup target add ${{ matrix.arch }}-apple-darwin
+        - name: install xz (hopefully no backdoor)
+          run: brew install xz
         - uses: actions/checkout@v3
         - name: Build application
           shell: bash
