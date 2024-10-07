@@ -1,15 +1,15 @@
-use anyhow::{bail, format_err, Result};
 use semver::Version;
 use shared::config::UPDATE_URL;
 use std::env::consts::EXE_SUFFIX;
 use std::fs::File;
-use std::io::{BufRead, BufReader, BufWriter, Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::{env, io, process};
 use base64::prelude::*;
 use image::EncodableLayout;
 use ring::digest::{Context, SHA512};
 use ring::signature;
-use crate::updater_proto::{decompress, DISTRIBUTION_PUBLIC_KEY, get_bytes_for_signature, LatestRelease};
+use thiserror::Error;
+use crate::updater_proto::{decompress, DISTRIBUTION_PUBLIC_KEY, get_bytes_for_signature, LatestRelease, Target};
 
 // https://github.com/lichess-org/fishnet/blob/90f12cd532a43002a276302738f916210a2d526d/src/main.rs
 #[cfg(unix)]
@@ -35,38 +35,82 @@ fn exec(command: &mut process::Command) -> io::Error {
 
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-#[derive(Default)]
-pub struct Updater {
-    release: Option<LatestRelease>,
+
+#[derive(Debug, Clone)]
+pub struct UpdateInfo {
+    pub version: String,
+    pub changelog: String,
+    pub size: usize,
 }
+
+#[derive(Debug)]
+pub struct Updater {
+    target: Target,
+    version: String,
+    changelog: String,
+}
+
+
+#[derive(Debug, Error)]
+pub enum UpdaterError {
+    #[error("HTTP Request failed")]
+    RequestError(#[from] ureq::Error),
+    #[error("Parsing error")]
+    ParsingError(ureq::Error),
+    #[error("Could not parse version")]
+    CouldNotParseVersion,
+    #[error("OS architecture not available")]
+    TargetNotFound,
+    #[error("Could not write/read")]
+    IoError(#[from] io::Error),
+    #[error("Could not decode base64")]
+    Base64DecodeError(#[from] base64::DecodeError),
+    #[error("Signature match failed")]
+    SignatureMatchFailed,
+    #[error("Decompression Failed")]
+    DecompressionFailed,
+    #[error("Could not replace program")]
+    ReplaceFailed(io::Error)
+}
+
 impl Updater {
-    pub fn check_for_update(&mut self) -> Result<bool> {
+    pub fn new() -> Result<Option<Self>, UpdaterError> {
         //set_ssl_vars!();
         let api_url = UPDATE_URL.to_string();
 
         let resp = ureq::get(&api_url).call()?;
-        if !resp.status().is_success() {
-            bail!(
-                "api request failed with status: {:?} - for: {:?}",
-                resp.status(),
-                api_url
-            )
-        }
+
         println!("hello from the updater");
-        let release = resp.into_body().read_json::<LatestRelease>()?;
+        let release = resp.into_body().read_json::<LatestRelease>().map_err(UpdaterError::ParsingError)?;
+        let version = Version::parse(&release.version).map_err(|_|UpdaterError::CouldNotParseVersion)?;
 
-        let new_version = Version::parse(CURRENT_VERSION)? < Version::parse(&release.version)?;
-
-        if new_version {
-            println!("New version available: v{}", release.version);
-            self.release = Some(release);
-        } else {
-            println!("up to date");
+        // if local version up to date
+        if Version::parse(CURRENT_VERSION).unwrap() >= version {
+            return Ok(None)
         }
 
-        Ok(new_version)
+        println!("New version available: v{}", release.version);
+        let target = release.targets
+            .into_iter()
+            .find(|t| t.target == current_platform::CURRENT_PLATFORM)
+            .ok_or(UpdaterError::TargetNotFound)?;
+
+        Ok(Some(Self {
+            changelog: release.changelog,
+            target,
+            version: release.version,
+        }))
     }
-    pub fn update(&mut self) -> Result<()> {
+
+    pub fn get_update_info(&self) -> UpdateInfo {
+        UpdateInfo {
+            version: self.version.clone(),
+            changelog: self.changelog.clone(),
+            size: self.target.size as usize,
+        }
+    }
+
+    pub fn update(&self) -> Result<(), UpdaterError> {
         println!(
             "Checking target-arch... {}",
             current_platform::CURRENT_PLATFORM
@@ -75,31 +119,16 @@ impl Updater {
 
         println!("Checking latest released version... ");
 
-        let release = self.release.as_ref().unwrap();
-        println!("v{:?}", release);
-
-        let target_asset = release
-            .targets
-            .iter()
-            .find(|t| t.target == current_platform::CURRENT_PLATFORM)
-            .ok_or_else(|| {
-                format_err!(
-                    "No release found for target: {}",
-                    current_platform::CURRENT_PLATFORM
-                )
-            })?;
+        println!("v{:?}", self.version);
 
 
-        let tmp_archive_dir = tempfile::TempDir::new()?;
-        let archive = tmp_archive_dir.path().join(&target_asset.name);
+        let tmp_archive_dir = tempfile::TempDir::new().map_err(UpdaterError::IoError)?;
+        let archive = tmp_archive_dir.path().join(&self.target.name);
 
         println!("Downloading...");
 
-        //let resp = reqwest::blocking::get(&target_asset.url).expect("request failed");
-        let resp = ureq::get(&target_asset.url).call().unwrap();
-        if !resp.status().is_success() {
-            panic!("Request was not successful {:?}", resp);
-        }
+
+        let resp = ureq::get(&self.target.url).call()?;
         let resp = resp.into_body().into_reader();
         let mut out = File::create(&archive).expect("failed to create file");
 
@@ -107,9 +136,9 @@ impl Updater {
         let mut src = BufReader::new(resp);
         loop {
             let n = {
-                let buf = src.fill_buf()?;
+                let buf = src.fill_buf().map_err(UpdaterError::IoError)?;
                 hash.update(buf);
-                out.write_all(buf)?;
+                out.write_all(buf).map_err(UpdaterError::IoError)?;
                 buf.len()
             };
             if n == 0 {
@@ -124,34 +153,32 @@ impl Updater {
 
 
         // verify signature + version
-        let to_be_checked = get_bytes_for_signature(hash.as_ref(), release.version.as_str());
-        let remote_signature = BASE64_STANDARD.decode(target_asset.signature.as_str()).unwrap();
+        let to_be_checked = get_bytes_for_signature(hash.as_ref(), self.version.as_str());
+        let remote_signature = BASE64_STANDARD.decode(self.target.signature.as_str())?;
 
         let public_key = signature::UnparsedPublicKey::new(&signature::ED25519, DISTRIBUTION_PUBLIC_KEY);
-        public_key.verify(to_be_checked.as_bytes(), remote_signature.as_bytes()).unwrap();
-
+        public_key.verify(to_be_checked.as_bytes(), remote_signature.as_bytes()).map_err(|_|UpdaterError::SignatureMatchFailed)?;
 
         println!("Extracting archive... ");
         let name = "client-gui";
         let bin_path_in_archive = format!("{}{}", name.trim_end_matches(EXE_SUFFIX), EXE_SUFFIX);
         let new_exe = tmp_archive_dir.path().join(&bin_path_in_archive);
 
-        decompress(archive.as_path(), &new_exe);
+        decompress(archive.as_path(), &new_exe)?;
 
         println!("Done");
         println!("Replacing binary file... ");
-        self_replace::self_replace(new_exe)?;
+        self_replace::self_replace(new_exe).map_err(UpdaterError::ReplaceFailed)?;
         println!("Done");
 
         Ok(())
     }
-    pub fn restart(&self) -> Result<()> {
+    pub fn restart(&self) {
         let current_exe = match env::current_exe() {
             Ok(exe) => exe,
-            Err(e) => bail!("Failed to restart process: {:?}", e),
+            Err(e) => panic!("Failed to restart process: {:?}", e),
         };
         println!("Restarting process: {:?}", current_exe);
         exec(process::Command::new(current_exe).args(std::env::args().into_iter().skip(1)));
-        Ok(())
     }
 }

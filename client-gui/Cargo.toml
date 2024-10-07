@@ -19,12 +19,11 @@ image = { version = "0.25.2", default-features = false, features = ["png"] }
 shared = { path = "../shared" }
 client = { path = "../client" }
 
-ureq = "3.0.0-rc1"
+ureq = { version = "3.0.0-rc1", default-features = false, features = ["json", "rustls"] }
 tempfile = "3.9.0"
 current_platform = "0.2.0"
 semver = "1.0.22"
 self-replace = "1.3.7"
-bytes = "1.5.0"
 base64 = "0.22.1"
 ring = "0.17.7"
 liblzma = { version = "0.3.4", features = ["static"] }
@@ -38,6 +37,6 @@ codegen-units = 1 # LLVM can perform better optimizations using a single thread
 debug = 2
 debug-assertions = false
 incremental = false
-lto = 'fat'
+#lto = 'fat'
 opt-level = 's'
 overflow-checks = true

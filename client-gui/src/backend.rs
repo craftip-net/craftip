@@ -4,19 +4,20 @@ use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::gui_channel::GuiTriggeredEvent;
 use crate::gui_channel::ServerState;
-use crate::GuiState;
+use crate::{GuiState, UpdateState};
 use client::client::Client;
 use client::structs::ControlTx;
 use client::structs::{Control, Stats};
 
 pub struct Controller {
     pub gui_rx: UnboundedReceiver<GuiTriggeredEvent>,
+    pub updater_rx: UnboundedReceiver<UpdateState>,
     pub state: Arc<Mutex<GuiState>>,
 }
 
 impl Controller {
-    pub fn new(gui_rx: UnboundedReceiver<GuiTriggeredEvent>, state: Arc<Mutex<GuiState>>) -> Self {
-        Self { gui_rx, state }
+    pub fn new(gui_rx: UnboundedReceiver<GuiTriggeredEvent>, updater_rx: UnboundedReceiver<UpdateState>, state: Arc<Mutex<GuiState>>) -> Self {
+        Self { gui_rx, updater_rx, state }
     }
 
     pub async fn update(&mut self) {
@@ -41,6 +42,9 @@ impl Controller {
                         Stats::Ping(_ping) => {}
                     }
                 }
+                event = self.updater_rx.recv() => {
+                    self.state.lock().unwrap().set_updater_status(event.unwrap());
+                },
                 event = self.gui_rx.recv() => {
                     if event.is_none() {
                         tracing::info!("GUI channel closed");

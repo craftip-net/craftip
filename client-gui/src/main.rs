@@ -3,20 +3,35 @@ mod backend;
 mod gui_channel;
 mod updater;
 mod updater_proto;
+mod updater_gui;
 
 use anyhow::{Context, Result};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::thread::sleep;
+use std::time::Duration;
 
 use eframe::egui::{CentralPanel, Color32, IconData, Label, Layout, RichText, TextEdit, Ui};
 use eframe::emath::Align;
 use eframe::{egui, CreationContext, Storage, Renderer};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::gui_channel::{GuiTriggeredChannel, GuiTriggeredEvent, ServerState};
 use client::structs::{Server, ServerAuthentication};
 use shared::crypto::ServerPrivateKey;
-use crate::updater::CURRENT_VERSION;
+use crate::updater::{CURRENT_VERSION, UpdateInfo, UpdaterError};
+use crate::updater_gui::{updater_background_thread, updater_gui_headline};
+
+
+#[derive(Debug)]
+pub enum UpdateState {
+    CheckingForUpdate,
+    UpToDate,
+    NewVersionFound(UnboundedSender<bool>, UpdateInfo),
+    Updating,
+    Error(UpdaterError)
+}
 
 #[tokio::main]
 pub async fn main() -> Result<(), eframe::Error> {
@@ -30,6 +45,19 @@ pub async fn main() -> Result<(), eframe::Error> {
         .finish();
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
+    let (updater_tx, updater_rx) = mpsc::unbounded_channel();
+
+    thread::spawn(move || {
+        loop {
+            if updater_background_thread(updater_tx.clone()) {
+                // no update available
+                sleep(Duration::from_secs(60 * 60 * 24));
+            } else {
+                sleep(Duration::from_secs(10));
+            }
+        }
+    });
+
     let mut viewport = egui::ViewportBuilder::default().with_inner_size([500.0, 400.0]);
     viewport.icon = build_icon();
     let options = eframe::NativeOptions {
@@ -37,19 +65,12 @@ pub async fn main() -> Result<(), eframe::Error> {
         ..Default::default()
     };
 
-    thread::spawn(move || {
-        let mut updater = updater::Updater::default();
-        if updater.check_for_update().unwrap() {
-            updater.update().unwrap();
-            updater.restart().unwrap();
-        }
-    });
     eframe::run_native(
         "CraftIP",
         options,
         Box::new(|cc| {
             // add context to state to redraw from other threads
-            Box::new(MyApp::new(cc))
+            Box::new(MyApp::new(cc, updater_rx))
         }),
     )
 }
@@ -69,6 +90,7 @@ fn build_icon() -> Option<Arc<IconData>> {
 
 pub struct GuiState {
     loading: bool,
+    update_status: UpdateState,
     error: Option<String>,
     servers: Option<Vec<ServerPanel>>,
     ctx: Option<egui::Context>,
@@ -78,6 +100,7 @@ impl GuiState {
     fn new() -> Self {
         Self {
             loading: false,
+            update_status: UpdateState::CheckingForUpdate,
             error: None,
             servers: None,
             ctx: None,
@@ -94,6 +117,10 @@ impl GuiState {
             .context("no active server found")?;
         self.request_repaint();
         Ok(())
+    }
+    fn set_updater_status(&mut self, new_status: UpdateState) {
+        self.update_status = new_status;
+        self.request_repaint();
     }
     fn modify(&mut self, closure: impl FnOnce(&mut GuiState)) {
         closure(self);
@@ -117,7 +144,7 @@ struct MyApp {
 }
 
 impl MyApp {
-    fn new(cc: &CreationContext) -> Self {
+    fn new(cc: &CreationContext, updater_rx: UnboundedReceiver<UpdateState>) -> Self {
         let storage = cc.storage.unwrap();
         let servers = match storage.get_string("servers") {
             Some(servers) => {
@@ -136,7 +163,7 @@ impl MyApp {
         state.servers = server_panels;
         state.set_ctx(cc.egui_ctx.clone());
         let state = Arc::new(Mutex::new(state));
-        let mut controller = backend::Controller::new(gui_rx, state.clone());
+        let mut controller = backend::Controller::new(gui_rx, updater_rx, state.clone());
 
         tokio::spawn(async move {
             controller.update().await;
@@ -165,7 +192,8 @@ impl eframe::App for MyApp {
                     ui.label(RichText::new(format!("v{}", CURRENT_VERSION)).small());
                     #[cfg(debug_assertions)]
                     ui.label(RichText::new(format!("{}", self.frames_rendered)).small());
-                });
+                    updater_gui_headline(ui, &mut state.update_status);
+                })
             });
             ui.separator();
 

@@ -729,7 +729,6 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
- "bytes",
  "client",
  "current_platform",
  "eframe",
@@ -3050,9 +3049,9 @@ checksum = "9e08d8363704e6c71fc928674353e6b7c23dcea9d82d7012c8faf2a3a025f8d0"
 
 [[package]]
 name = "subtle"
-version = "2.5.0"
+version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81cdd64d312baedb58e21336b31bc043b77e01cc99033ce76ef539f78e965ebc"
+checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "syn"
@@ -3386,7 +3385,6 @@ checksum = "443349052924188e919be78d5870f6e827435579085947d1ae9ba32bb997e16f"
 dependencies = [
  "base64 0.22.1",
  "cc",
- "flate2",
  "hoot",
  "http",
  "log",

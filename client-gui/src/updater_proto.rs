@@ -3,6 +3,7 @@ use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::Path;
 use std::time::Instant;
 use serde::{Deserialize, Serialize};
+use crate::updater::UpdaterError;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LatestRelease {
@@ -32,22 +33,23 @@ pub fn get_bytes_for_signature(hash: &[u8], version: &str) -> Vec<u8> {
     to_be_checked
 }
 
-pub fn decompress<P: AsRef<Path>>(source: P, dest: P) {
+pub fn decompress<P: AsRef<Path>>(source: P, dest: P) -> Result<(), UpdaterError> {
     let start = Instant::now();
-    let archive = File::open(source).unwrap();
+    let archive = File::open(source)?;
     let archive = BufReader::new(archive);
-    let output = File::create(dest).unwrap();
+    let output = File::create(dest)?;
     let mut output = BufWriter::new(output);
 
     let mut decompressor = liblzma::read::XzDecoder::new(archive);
 
     let mut buf = [0u8; 1024];
     loop {
-        let len = decompressor.read(&mut buf).unwrap();
+        let len = decompressor.read(&mut buf).map_err(|_|UpdaterError::DecompressionFailed)?;
         if len == 0 {
             break;
         }
-        output.write_all(&buf[..len]).unwrap();
+        output.write_all(&buf[..len])?;
     }
     println!("decompression took {}ms", (Instant::now() - start).as_millis());
+    Ok(())
 }
