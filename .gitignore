@@ -1,5 +1,4 @@
 /target
 /target-cross
 .idea
-Cargo.lock
 .DS_Store

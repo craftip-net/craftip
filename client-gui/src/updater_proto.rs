@@ -26,7 +26,7 @@ pub fn get_bytes_for_signature(hash: &[u8], version: &str) -> Vec<u8> {
 
     // append version
     let mut to_be_checked = Vec::with_capacity(hash.len() + prefix.as_bytes().len());
-    to_be_checked.extend_from_slice(&hash);
+    to_be_checked.extend_from_slice(hash);
     to_be_checked.extend_from_slice(prefix.as_bytes());
 
     to_be_checked
