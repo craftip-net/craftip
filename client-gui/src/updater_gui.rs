@@ -1,8 +1,10 @@
-use eframe::egui::{Button, Color32, Ui, Widget};
+use crate::updater::{Updater, CURRENT_VERSION};
+use crate::{updater, UpdateState};
+use eframe::egui::{Button, Color32, RichText, Ui, Widget};
+use std::thread;
+use std::time::Instant;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
-use crate::{updater, UpdateState};
-
 
 /// Returns false if update check failed
 pub(crate) fn updater_background_thread(updater_tx: UnboundedSender<UpdateState>) -> bool {
@@ -29,32 +31,58 @@ pub(crate) fn updater_background_thread(updater_tx: UnboundedSender<UpdateState>
                 if let Err(e) = updater.update() {
                     let _ = updater_tx.send(UpdateState::Error(e));
                 } else {
-                    updater.restart();
+                    updater.restart().unwrap();
                 }
             }
         }
     }
-    return true;
+    true
+}
+
+pub(crate) fn updater_no_consent(updater_tx: UnboundedSender<UpdateState>) {
+    let start = Instant::now();
+    thread::spawn(move || match Updater::new() {
+        Ok(None) => {
+            let _ = updater_tx.send(UpdateState::UpToDate);
+        }
+        Err(e) => {
+            let _ = updater_tx.send(UpdateState::Error(e));
+        }
+        Ok(Some(updater)) => {
+            let _ = updater_tx.send(UpdateState::Updating);
+            if let Err(e) = updater.update() {
+                let _ = updater_tx.send(UpdateState::Error(e));
+                return;
+            }
+            if let Err(e) = updater.restart() {
+                let _ = updater_tx.send(UpdateState::Error(e));
+            }
+        }
+    });
+    println!("took {}ms", (start - Instant::now()).as_millis());
 }
 
 pub(crate) fn updater_gui_headline(ui: &mut Ui, update_status: &mut UpdateState) {
+    ui.label(RichText::new(format!("v{}", CURRENT_VERSION)).small());
     match update_status {
         UpdateState::Error(e) => {
-            ui.colored_label(Color32::RED, format!("Error while updating: {}", e));
-        },
+            ui.colored_label(Color32::RED, format!("Updater: {}", e))
+                .on_hover_text(format!("{:?}", e));
+        }
         UpdateState::CheckingForUpdate => {
             ui.label("checking for update");
-        },
-        UpdateState::UpToDate => {
-            ui.label("Up to date");
-        },
+        }
+        UpdateState::UpToDate => {}
         UpdateState::NewVersionFound(sender, info) => {
-            let button = Button::new("Update").small().fill(Color32::LIGHT_GREEN).ui(ui);
+            let button = Button::new("Update")
+                .small()
+                .fill(Color32::LIGHT_GREEN)
+                .ui(ui);
             if button.clicked() {
                 let _ = sender.send(true);
             }
             ui.label(format!("A new version {} is available!", info.version));
-        },
+        }
         UpdateState::Updating => {
             ui.label("Updating...");
         }

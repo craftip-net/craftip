@@ -44,15 +44,7 @@ pub enum DistributorError {
 
 type ServerHostname = String;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Register {
     pub servers: HashMap<ServerHostname, Tx>,
-}
-
-impl Register {
-    pub fn new() -> Self {
-        Register {
-            servers: HashMap::new(),
-        }
-    }
 }

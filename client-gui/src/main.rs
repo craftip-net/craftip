@@ -2,26 +2,24 @@
 mod backend;
 mod gui_channel;
 mod updater;
-mod updater_proto;
 mod updater_gui;
+mod updater_proto;
 
 use anyhow::{Context, Result};
 use std::sync::{Arc, Mutex};
-use std::thread;
 
 use eframe::egui::{CentralPanel, Color32, IconData, Label, Layout, RichText, TextEdit, Ui};
 use eframe::emath::Align;
-use eframe::{egui, CreationContext, Storage, Renderer};
-use tokio::sync::{mpsc, oneshot};
+use eframe::{egui, CreationContext, Storage};
+use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::gui_channel::{GuiTriggeredChannel, GuiTriggeredEvent, ServerState};
+use crate::updater::UpdateInfo;
+use crate::updater_gui::{updater_gui_headline, updater_no_consent};
+use crate::updater_proto::UpdaterError;
 use client::structs::{Server, ServerAuthentication};
 use shared::crypto::ServerPrivateKey;
-use crate::updater::{CURRENT_VERSION, UpdateInfo, Updater};
-use crate::updater_gui::{updater_gui_headline};
-use crate::updater_proto::UpdaterError;
-
 
 #[derive(Debug)]
 pub enum UpdateState {
@@ -29,7 +27,7 @@ pub enum UpdateState {
     UpToDate,
     NewVersionFound(UnboundedSender<bool>, UpdateInfo),
     Updating,
-    Error(UpdaterError)
+    Error(UpdaterError),
 }
 
 #[tokio::main]
@@ -44,26 +42,9 @@ pub async fn main() -> Result<(), eframe::Error> {
         .finish();
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
-    let (updater_tx2, updater_rx) = mpsc::unbounded_channel();
-    let updater_tx = updater_tx2.clone();
-    thread::spawn(move || {
-        match Updater::new() {
-            Ok(None) => {}
-            Err(e) => {
-                let _ = updater_tx.send(UpdateState::Error(e));
-            }
-            Ok(Some(updater)) => {
-                let _ = updater_tx.send(UpdateState::Updating);
-                if let Err(e) = updater.update() {
-                    let _ = updater_tx.send(UpdateState::Error(e));
-                    return;
-                }
-                if let Err(e) = updater.restart() {
-                    let _ = updater_tx.send(UpdateState::Error(e));
-                }
-            }
-        }
-    });
+    let (updater_tx, updater_rx) = mpsc::unbounded_channel();
+    // this clone is on purpose so updater_tx lives during the whole program
+    updater_no_consent(updater_tx.clone());
 
     let mut viewport = egui::ViewportBuilder::default().with_inner_size([500.0, 400.0]);
     viewport.icon = build_icon();
@@ -196,7 +177,6 @@ impl eframe::App for MyApp {
                     ui.spinner();
                 }
                 ui.with_layout(Layout::right_to_left(Align::TOP), |ui| {
-                    ui.label(RichText::new(format!("v{}", CURRENT_VERSION)).small());
                     #[cfg(debug_assertions)]
                     ui.label(RichText::new(format!("{}", self.frames_rendered)).small());
                     updater_gui_headline(ui, &mut state.update_status);
@@ -241,7 +221,7 @@ impl eframe::App for MyApp {
             .as_ref()
             .unwrap()
             .iter()
-            .map(|s| Server::from(s))
+            .map(Server::from)
             .collect();
         storage.set_string("servers", serde_json::to_string(&servers).unwrap());
     }

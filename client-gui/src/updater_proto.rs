@@ -1,9 +1,9 @@
+use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io;
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::Path;
 use std::time::Instant;
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -14,14 +14,16 @@ pub struct LatestRelease {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Target {
-    pub name: String,
     pub url: String,
     pub target: String,
     pub signature: String,
     pub size: u64,
 }
 pub const SIGNATURE_SEPARATOR_NONCE: &str = "CraftIPVersion";
-pub const DISTRIBUTION_PUBLIC_KEY: [u8; 32] = [0xac, 0x53, 0xd0, 0x20, 0x59, 0x61, 0x92, 0x11, 0x26, 0x74, 0x38, 0x95, 0x47, 0xe2, 0xff, 0x8a, 0x11, 0x62, 0x3c, 0x2c, 0x14, 0xd9, 0xf5, 0xfb, 0x14, 0x7d, 0x68, 0xf8, 0x8d, 0xf8, 0x6b, 0x2f];
+pub const DISTRIBUTION_PUBLIC_KEY: [u8; 32] = [
+    0xac, 0x53, 0xd0, 0x20, 0x59, 0x61, 0x92, 0x11, 0x26, 0x74, 0x38, 0x95, 0x47, 0xe2, 0xff, 0x8a,
+    0x11, 0x62, 0x3c, 0x2c, 0x14, 0xd9, 0xf5, 0xfb, 0x14, 0x7d, 0x68, 0xf8, 0x8d, 0xf8, 0x6b, 0x2f,
+];
 
 pub fn get_bytes_for_signature(hash: &[u8], version: &str) -> Vec<u8> {
     let prefix = format!("{}{}", SIGNATURE_SEPARATOR_NONCE, version);
@@ -55,7 +57,7 @@ pub enum UpdaterError {
     #[error("Could not replace program")]
     ReplaceFailed(io::Error),
     #[error("Restart failed")]
-    RestartFailed
+    RestartFailed(io::Error),
 }
 
 pub fn decompress<P: AsRef<Path>>(source: P, dest: P) -> Result<(), UpdaterError> {
@@ -69,12 +71,17 @@ pub fn decompress<P: AsRef<Path>>(source: P, dest: P) -> Result<(), UpdaterError
 
     let mut buf = [0u8; 1024];
     loop {
-        let len = decompressor.read(&mut buf).map_err(|_|UpdaterError::DecompressionFailed)?;
+        let len = decompressor
+            .read(&mut buf)
+            .map_err(|_| UpdaterError::DecompressionFailed)?;
         if len == 0 {
             break;
         }
         output.write_all(&buf[..len])?;
     }
-    println!("decompression took {}ms", (Instant::now() - start).as_millis());
+    println!(
+        "decompression took {}ms",
+        (Instant::now() - start).as_millis()
+    );
     Ok(())
 }

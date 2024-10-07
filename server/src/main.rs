@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mc_listener = TcpListener::bind(&addr).await?;
     tracing::info!("server running on {:?}", mc_listener.local_addr()?);
-    let register = Arc::new(Mutex::new(Register::new()));
+    let register = Arc::new(Mutex::new(Register::default()));
     loop {
         let (socket, _addr) = mc_listener.accept().await?;
         let register = Arc::clone(&register);

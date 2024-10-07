@@ -16,8 +16,16 @@ pub struct Controller {
 }
 
 impl Controller {
-    pub fn new(gui_rx: UnboundedReceiver<GuiTriggeredEvent>, updater_rx: UnboundedReceiver<UpdateState>, state: Arc<Mutex<GuiState>>) -> Self {
-        Self { gui_rx, updater_rx, state }
+    pub fn new(
+        gui_rx: UnboundedReceiver<GuiTriggeredEvent>,
+        updater_rx: UnboundedReceiver<UpdateState>,
+        state: Arc<Mutex<GuiState>>,
+    ) -> Self {
+        Self {
+            gui_rx,
+            updater_rx,
+            state,
+        }
     }
 
     pub async fn update(&mut self) {

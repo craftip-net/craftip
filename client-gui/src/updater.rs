@@ -1,14 +1,17 @@
+use crate::updater_proto::{
+    decompress, get_bytes_for_signature, LatestRelease, Target, UpdaterError,
+    DISTRIBUTION_PUBLIC_KEY,
+};
+use base64::prelude::*;
+use image::EncodableLayout;
+use ring::digest::{Context, SHA512};
+use ring::signature;
 use semver::Version;
 use shared::config::UPDATE_URL;
 use std::env::consts::EXE_SUFFIX;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::{env, io, process};
-use base64::prelude::*;
-use image::EncodableLayout;
-use ring::digest::{Context, SHA512};
-use ring::signature;
-use crate::updater_proto::{decompress, DISTRIBUTION_PUBLIC_KEY, get_bytes_for_signature, LatestRelease, Target, UpdaterError};
 
 // https://github.com/lichess-org/fishnet/blob/90f12cd532a43002a276302738f916210a2d526d/src/main.rs
 #[cfg(unix)]
@@ -34,7 +37,6 @@ fn exec(command: &mut process::Command) -> io::Error {
 
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-
 #[derive(Debug, Clone)]
 pub struct UpdateInfo {
     pub version: String,
@@ -49,7 +51,6 @@ pub struct Updater {
     changelog: String,
 }
 
-
 impl Updater {
     pub fn new() -> Result<Option<Self>, UpdaterError> {
         //set_ssl_vars!();
@@ -58,16 +59,22 @@ impl Updater {
         let resp = ureq::get(&api_url).call()?;
 
         println!("hello from the updater");
-        let release = resp.into_body().read_json::<LatestRelease>().map_err(UpdaterError::ParsingError)?;
-        let version = Version::parse(&release.version).map_err(|_|UpdaterError::CouldNotParseVersion)?;
+        let release = resp
+            .into_body()
+            .read_json::<LatestRelease>()
+            .map_err(UpdaterError::ParsingError)?;
+
+        let version =
+            Version::parse(&release.version).map_err(|_| UpdaterError::CouldNotParseVersion)?;
 
         // if local version up to date
         if Version::parse(CURRENT_VERSION).unwrap() >= version {
-            return Ok(None)
+            return Ok(None);
         }
 
         println!("New version available: v{}", release.version);
-        let target = release.targets
+        let target = release
+            .targets
             .into_iter()
             .find(|t| t.target == current_platform::CURRENT_PLATFORM)
             .ok_or(UpdaterError::TargetNotFound)?;
@@ -98,12 +105,11 @@ impl Updater {
 
         println!("v{:?}", self.version);
 
-
         let tmp_archive_dir = tempfile::TempDir::new().map_err(UpdaterError::IoError)?;
-        let archive = tmp_archive_dir.path().join(&self.target.name);
+        let archive_name = "client-gui.xz";
+        let archive = tmp_archive_dir.path().join(archive_name);
 
         println!("Downloading...");
-
 
         let resp = ureq::get(&self.target.url).call()?;
         let resp = resp.into_body().into_reader();
@@ -125,21 +131,22 @@ impl Updater {
         }
         let hash = hash.finish();
 
-        println!("hash of file is: {:x?}", hash.as_ref());
         println!("Downloaded to: {:?}", archive);
-
 
         // verify signature + version
         let to_be_checked = get_bytes_for_signature(hash.as_ref(), self.version.as_str());
         let remote_signature = BASE64_STANDARD.decode(self.target.signature.as_str())?;
 
-        let public_key = signature::UnparsedPublicKey::new(&signature::ED25519, DISTRIBUTION_PUBLIC_KEY);
-        public_key.verify(to_be_checked.as_bytes(), remote_signature.as_bytes()).map_err(|_|UpdaterError::SignatureMatchFailed)?;
+        let public_key =
+            signature::UnparsedPublicKey::new(&signature::ED25519, DISTRIBUTION_PUBLIC_KEY);
+        public_key
+            .verify(to_be_checked.as_bytes(), remote_signature.as_bytes())
+            .map_err(|_| UpdaterError::SignatureMatchFailed)?;
 
         println!("Extracting archive... ");
-        let name = "client-gui";
-        let bin_path_in_archive = format!("{}{}", name.trim_end_matches(EXE_SUFFIX), EXE_SUFFIX);
-        let new_exe = tmp_archive_dir.path().join(&bin_path_in_archive);
+        let exe_name = "client-gui";
+        let exe_name = format!("{}{}", exe_name.trim_end_matches(EXE_SUFFIX), EXE_SUFFIX);
+        let new_exe = tmp_archive_dir.path().join(&exe_name);
 
         decompress(archive.as_path(), &new_exe)?;
 
@@ -153,11 +160,12 @@ impl Updater {
     pub fn restart(&self) -> Result<(), UpdaterError> {
         let current_exe = match env::current_exe() {
             Ok(exe) => exe,
-            Err(e) => return Err(UpdaterError::RestartFailed),
+            Err(e) => return Err(UpdaterError::RestartFailed(e)),
         };
         println!("Restarting process: {:?}", current_exe);
-        exec(process::Command::new(current_exe).args(std::env::args().into_iter().skip(1)));
+        #[allow(clippy::useless_conversion)]
+        let e = exec(process::Command::new(current_exe).args(std::env::args().into_iter().skip(1)));
         // should never be called
-        Err(UpdaterError::RestartFailed)
+        Err(UpdaterError::RestartFailed(e))
     }
 }
