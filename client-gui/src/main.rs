@@ -8,8 +8,6 @@ mod updater_gui;
 use anyhow::{Context, Result};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::thread::sleep;
-use std::time::Duration;
 
 use eframe::egui::{CentralPanel, Color32, IconData, Label, Layout, RichText, TextEdit, Ui};
 use eframe::emath::Align;
@@ -20,7 +18,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use crate::gui_channel::{GuiTriggeredChannel, GuiTriggeredEvent, ServerState};
 use client::structs::{Server, ServerAuthentication};
 use shared::crypto::ServerPrivateKey;
-use crate::updater::{CURRENT_VERSION, UpdateInfo};
+use crate::updater::{CURRENT_VERSION, UpdateInfo, Updater};
 use crate::updater_gui::{updater_gui_headline};
 use crate::updater_proto::UpdaterError;
 
@@ -46,13 +44,24 @@ pub async fn main() -> Result<(), eframe::Error> {
         .finish();
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
-    let (updater_tx, updater_rx) = mpsc::unbounded_channel();
-
+    let (updater_tx2, updater_rx) = mpsc::unbounded_channel();
+    let updater_tx = updater_tx2.clone();
     thread::spawn(move || {
-        let updater = updater::Updater::new().unwrap();
-        if let Some(updater) = updater {
-            updater.update().unwrap();
-            updater.restart();
+        match Updater::new() {
+            Ok(None) => {}
+            Err(e) => {
+                let _ = updater_tx.send(UpdateState::Error(e));
+            }
+            Ok(Some(updater)) => {
+                let _ = updater_tx.send(UpdateState::Updating);
+                if let Err(e) = updater.update() {
+                    let _ = updater_tx.send(UpdateState::Error(e));
+                    return;
+                }
+                if let Err(e) = updater.restart() {
+                    let _ = updater_tx.send(UpdateState::Error(e));
+                }
+            }
         }
     });
 

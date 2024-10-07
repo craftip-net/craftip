@@ -53,7 +53,9 @@ pub enum UpdaterError {
     #[error("Decompression Failed")]
     DecompressionFailed,
     #[error("Could not replace program")]
-    ReplaceFailed(io::Error)
+    ReplaceFailed(io::Error),
+    #[error("Restart failed")]
+    RestartFailed
 }
 
 pub fn decompress<P: AsRef<Path>>(source: P, dest: P) -> Result<(), UpdaterError> {

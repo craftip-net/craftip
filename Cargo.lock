@@ -609,6 +609,8 @@ dependencies = [
  "ring",
  "serde",
  "serde_json",
+ "thiserror",
+ "ureq",
 ]
 
 [[package]]
@@ -725,7 +727,7 @@ dependencies = [
 
 [[package]]
 name = "client-gui"
-version = "0.0.1"
+version = "0.0.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3385,6 +3387,7 @@ checksum = "443349052924188e919be78d5870f6e827435579085947d1ae9ba32bb997e16f"
 dependencies = [
  "base64 0.22.1",
  "cc",
+ "flate2",
  "hoot",
  "http",
  "log",

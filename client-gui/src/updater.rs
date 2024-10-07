@@ -150,12 +150,14 @@ impl Updater {
 
         Ok(())
     }
-    pub fn restart(&self) {
+    pub fn restart(&self) -> Result<(), UpdaterError> {
         let current_exe = match env::current_exe() {
             Ok(exe) => exe,
-            Err(e) => panic!("Failed to restart process: {:?}", e),
+            Err(e) => return Err(UpdaterError::RestartFailed),
         };
         println!("Restarting process: {:?}", current_exe);
         exec(process::Command::new(current_exe).args(std::env::args().into_iter().skip(1)));
+        // should never be called
+        Err(UpdaterError::RestartFailed)
     }
 }
