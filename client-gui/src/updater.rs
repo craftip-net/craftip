@@ -8,8 +8,7 @@ use base64::prelude::*;
 use image::EncodableLayout;
 use ring::digest::{Context, SHA512};
 use ring::signature;
-use thiserror::Error;
-use crate::updater_proto::{decompress, DISTRIBUTION_PUBLIC_KEY, get_bytes_for_signature, LatestRelease, Target};
+use crate::updater_proto::{decompress, DISTRIBUTION_PUBLIC_KEY, get_bytes_for_signature, LatestRelease, Target, UpdaterError};
 
 // https://github.com/lichess-org/fishnet/blob/90f12cd532a43002a276302738f916210a2d526d/src/main.rs
 #[cfg(unix)]
@@ -50,28 +49,6 @@ pub struct Updater {
     changelog: String,
 }
 
-
-#[derive(Debug, Error)]
-pub enum UpdaterError {
-    #[error("HTTP Request failed")]
-    RequestError(#[from] ureq::Error),
-    #[error("Parsing error")]
-    ParsingError(ureq::Error),
-    #[error("Could not parse version")]
-    CouldNotParseVersion,
-    #[error("OS architecture not available")]
-    TargetNotFound,
-    #[error("Could not write/read")]
-    IoError(#[from] io::Error),
-    #[error("Could not decode base64")]
-    Base64DecodeError(#[from] base64::DecodeError),
-    #[error("Signature match failed")]
-    SignatureMatchFailed,
-    #[error("Decompression Failed")]
-    DecompressionFailed,
-    #[error("Could not replace program")]
-    ReplaceFailed(io::Error)
-}
 
 impl Updater {
     pub fn new() -> Result<Option<Self>, UpdaterError> {

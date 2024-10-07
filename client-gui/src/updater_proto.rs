@@ -1,9 +1,10 @@
 use std::fs::File;
+use std::io;
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::Path;
 use std::time::Instant;
 use serde::{Deserialize, Serialize};
-use crate::updater::UpdaterError;
+use thiserror::Error;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LatestRelease {
@@ -31,6 +32,28 @@ pub fn get_bytes_for_signature(hash: &[u8], version: &str) -> Vec<u8> {
     to_be_checked.extend_from_slice(prefix.as_bytes());
 
     to_be_checked
+}
+
+#[derive(Debug, Error)]
+pub enum UpdaterError {
+    #[error("HTTP Request failed")]
+    RequestError(#[from] ureq::Error),
+    #[error("Parsing error")]
+    ParsingError(ureq::Error),
+    #[error("Could not parse version")]
+    CouldNotParseVersion,
+    #[error("OS architecture not available")]
+    TargetNotFound,
+    #[error("Could not write/read")]
+    IoError(#[from] io::Error),
+    #[error("Could not decode base64")]
+    Base64DecodeError(#[from] base64::DecodeError),
+    #[error("Signature match failed")]
+    SignatureMatchFailed,
+    #[error("Decompression Failed")]
+    DecompressionFailed,
+    #[error("Could not replace program")]
+    ReplaceFailed(io::Error)
 }
 
 pub fn decompress<P: AsRef<Path>>(source: P, dest: P) -> Result<(), UpdaterError> {

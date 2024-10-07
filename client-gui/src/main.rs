@@ -20,8 +20,9 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use crate::gui_channel::{GuiTriggeredChannel, GuiTriggeredEvent, ServerState};
 use client::structs::{Server, ServerAuthentication};
 use shared::crypto::ServerPrivateKey;
-use crate::updater::{CURRENT_VERSION, UpdateInfo, UpdaterError};
-use crate::updater_gui::{updater_background_thread, updater_gui_headline};
+use crate::updater::{CURRENT_VERSION, UpdateInfo};
+use crate::updater_gui::{updater_gui_headline};
+use crate::updater_proto::UpdaterError;
 
 
 #[derive(Debug)]
@@ -48,13 +49,10 @@ pub async fn main() -> Result<(), eframe::Error> {
     let (updater_tx, updater_rx) = mpsc::unbounded_channel();
 
     thread::spawn(move || {
-        loop {
-            if updater_background_thread(updater_tx.clone()) {
-                // no update available
-                sleep(Duration::from_secs(60 * 60 * 24));
-            } else {
-                sleep(Duration::from_secs(10));
-            }
+        let updater = updater::Updater::new().unwrap();
+        if let Some(updater) = updater {
+            updater.update().unwrap();
+            updater.restart();
         }
     });
 
