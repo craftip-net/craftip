@@ -10,19 +10,17 @@ jobs:
           arch: [x86_64, aarch64]
       
       name: ${{ matrix.arch }}
-      runs-on: macos-latest
+      runs-on: macos-12
       steps:
         - run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y
         - name: Add architecture ${{ matrix.arch }}
           run: rustup target add ${{ matrix.arch }}-apple-darwin
-        - name: install xz (hopefully no backdoor)
-          run: brew install xz
         - uses: actions/checkout@v3
         - name: Build application
           shell: bash
           run: |
            cd client-gui
-           PKG_CONFIG_SYSROOT_DIR=/ cargo build --release --target=${{ matrix.arch }}-apple-darwin
+           cargo build --release --target=${{ matrix.arch }}-apple-darwin
         - name: Upload artifact
           uses: actions/upload-artifact@v4
           with:
