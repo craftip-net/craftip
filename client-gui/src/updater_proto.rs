@@ -1,3 +1,7 @@
+use std::fs::File;
+use std::io::{BufReader, BufWriter, Read, Write};
+use std::path::Path;
+use std::time::Instant;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -26,4 +30,24 @@ pub fn get_bytes_for_signature(hash: &[u8], version: &str) -> Vec<u8> {
     to_be_checked.extend_from_slice(prefix.as_bytes());
 
     to_be_checked
+}
+
+pub fn decompress<P: AsRef<Path>>(source: P, dest: P) {
+    let start = Instant::now();
+    let archive = File::open(source).unwrap();
+    let archive = BufReader::new(archive);
+    let output = File::create(dest).unwrap();
+    let mut output = BufWriter::new(output);
+
+    let mut decompressor = liblzma::read::XzDecoder::new(archive);
+
+    let mut buf = [0u8; 1024];
+    loop {
+        let len = decompressor.read(&mut buf).unwrap();
+        if len == 0 {
+            break;
+        }
+        output.write_all(&buf[..len]).unwrap();
+    }
+    println!("decompression took {}ms", (Instant::now() - start).as_millis());
 }

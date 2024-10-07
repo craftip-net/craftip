@@ -5,13 +5,11 @@ use std::env::consts::EXE_SUFFIX;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::{env, io, process};
-use std::path::Path;
-use std::time::Instant;
 use base64::prelude::*;
 use image::EncodableLayout;
 use ring::digest::{Context, SHA512};
 use ring::signature;
-use crate::updater_proto::{DISTRIBUTION_PUBLIC_KEY, get_bytes_for_signature, LatestRelease};
+use crate::updater_proto::{decompress, DISTRIBUTION_PUBLIC_KEY, get_bytes_for_signature, LatestRelease};
 
 // https://github.com/lichess-org/fishnet/blob/90f12cd532a43002a276302738f916210a2d526d/src/main.rs
 #[cfg(unix)]
@@ -156,25 +154,4 @@ impl Updater {
         exec(process::Command::new(current_exe).args(std::env::args().into_iter().skip(1)));
         Ok(())
     }
-}
-
-
-fn decompress(source: &Path, dest: &Path) {
-    let start = Instant::now();
-    let archive = File::open(source).unwrap();
-    let archive = BufReader::new(archive);
-    let output = File::create(dest).unwrap();
-    let mut output = BufWriter::new(output);
-
-    let mut decompressor = lzma::LzmaReader::new_decompressor(archive).unwrap();
-
-    let mut buf = [0u8; 1024];
-    loop {
-        let len = decompressor.read(&mut buf).unwrap();
-        if len == 0 {
-            break;
-        }
-        output.write_all(&buf[..len]).unwrap();
-    }
-    println!("decompression took {}ms", (Instant::now() - start).as_millis());
 }
