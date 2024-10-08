@@ -27,8 +27,9 @@ jobs:
           with:
             name: ${{ matrix.arch }}-apple-darwin
             path: target/${{ matrix.arch }}-apple-darwin/release/client-gui
-        - name: Upload artifact
+        - name: upload version
           uses: actions/upload-artifact@v4
+          if: ${{ matrix.arch == 'aarch64'}}
           with:
             name: version
             path: target/version
