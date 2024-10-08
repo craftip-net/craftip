@@ -2,7 +2,6 @@ use crate::updater::{Updater, CURRENT_VERSION};
 use crate::{updater, UpdateState};
 use eframe::egui::{Button, Color32, RichText, Ui, Widget};
 use std::thread;
-use std::time::Instant;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -40,7 +39,6 @@ pub(crate) fn updater_background_thread(updater_tx: UnboundedSender<UpdateState>
 }
 
 pub(crate) fn updater_no_consent(updater_tx: UnboundedSender<UpdateState>) {
-    let start = Instant::now();
     thread::spawn(move || match Updater::new() {
         Ok(None) => {
             let _ = updater_tx.send(UpdateState::UpToDate);
@@ -59,7 +57,6 @@ pub(crate) fn updater_no_consent(updater_tx: UnboundedSender<UpdateState>) {
             }
         }
     });
-    println!("took {}ms", (start - Instant::now()).as_millis());
 }
 
 pub(crate) fn updater_gui_headline(ui: &mut Ui, update_status: &mut UpdateState) {
@@ -70,7 +67,7 @@ pub(crate) fn updater_gui_headline(ui: &mut Ui, update_status: &mut UpdateState)
                 .on_hover_text(format!("{:?}", e));
         }
         UpdateState::CheckingForUpdate => {
-            ui.label("checking for update");
+            ui.label("Checking for update...");
         }
         UpdateState::UpToDate => {}
         UpdateState::NewVersionFound(sender, info) => {

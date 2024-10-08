@@ -4,6 +4,7 @@ mod gui_channel;
 mod updater;
 mod updater_gui;
 mod updater_proto;
+mod config;
 
 use anyhow::{Context, Result};
 use std::sync::{Arc, Mutex};

@@ -1,13 +1,12 @@
 use crate::updater_proto::{
-    decompress, get_bytes_for_signature, LatestRelease, Target, UpdaterError,
-    DISTRIBUTION_PUBLIC_KEY,
+    decompress, get_bytes_for_signature, LatestRelease, Target, UpdaterError
 };
 use base64::prelude::*;
 use image::EncodableLayout;
 use ring::digest::{Context, SHA512};
 use ring::signature;
 use semver::Version;
-use shared::config::UPDATE_URL;
+use crate::config::{DISTRIBUTION_PUBLIC_KEY, UPDATE_URL};
 use std::env::consts::EXE_SUFFIX;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};

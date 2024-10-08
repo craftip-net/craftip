@@ -130,7 +130,7 @@ impl fmt::Display for ServerPublicKey {
 }
 #[cfg(test)]
 mod tests {
-    use crate::crypto::{ServerPrivateKey, ServerPublicKey, BASE36_ENCODER_STRING};
+    use crate::crypto::{ServerPrivateKey, BASE36_ENCODER_STRING};
 
     #[test]
     fn test() {
