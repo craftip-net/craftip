@@ -1,12 +1,7 @@
-use crate::updater_proto::{
-    decompress, get_bytes_for_signature, LatestRelease, Target, UpdaterError
-};
-use base64::prelude::*;
-use image::EncodableLayout;
+use crate::updater_proto::{decompress, LatestRelease, Target, UpdaterError, verify_signature};
 use ring::digest::{Context, SHA512};
-use ring::signature;
 use semver::Version;
-use crate::config::{DISTRIBUTION_PUBLIC_KEY, UPDATE_URL};
+use crate::config::UPDATE_URL;
 use std::env::consts::EXE_SUFFIX;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
@@ -132,15 +127,7 @@ impl Updater {
 
         println!("Downloaded to: {:?}", archive);
 
-        // verify signature + version
-        let to_be_checked = get_bytes_for_signature(hash.as_ref(), self.version.as_str());
-        let remote_signature = BASE64_STANDARD.decode(self.target.signature.as_str())?;
-
-        let public_key =
-            signature::UnparsedPublicKey::new(&signature::ED25519, DISTRIBUTION_PUBLIC_KEY);
-        public_key
-            .verify(to_be_checked.as_bytes(), remote_signature.as_bytes())
-            .map_err(|_| UpdaterError::SignatureMatchFailed)?;
+        verify_signature(hash.as_ref(), self.version.as_ref(), self.target.signature.as_str())?;
 
         println!("Extracting archive... ");
         let exe_name = "client-gui";

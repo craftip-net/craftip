@@ -1,10 +1,11 @@
 [workspace]
 resolver = "2"
 members = [
+    "build/bundle",
     "client",
     "client-gui",
     "server",
-    "shared"
+    "shared",
 ]
 
 

@@ -1,3 +1,7 @@
+use crate::config::DISTRIBUTION_PUBLIC_KEY;
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
+use ring::signature;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io;
@@ -9,13 +13,16 @@ use thiserror::Error;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LatestRelease {
     pub version: String,
+    #[serde(default)]
     pub changelog: String,
+    #[serde(default)]
+    pub timestamp: u64,
     pub targets: Vec<Target>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Target {
-    pub url: String,
     pub target: String,
+    pub url: String,
     pub signature: String,
     pub size: u64,
 }
@@ -79,5 +86,20 @@ pub fn decompress<P: AsRef<Path>>(source: P, dest: P) -> Result<(), UpdaterError
         "decompression took {}ms",
         (Instant::now() - start).as_millis()
     );
+    Ok(())
+}
+
+/// verifies the remote signature by computing the downloaded file hash and remote version together, so no downgrade attack
+pub fn verify_signature(hash: &[u8], version: &str, signature: &str) -> Result<(), UpdaterError> {
+    let to_be_checked = get_bytes_for_signature(hash, version);
+
+    // verify remote signature
+    let remote_signature = BASE64_STANDARD.decode(signature)?;
+
+    let public_key =
+        signature::UnparsedPublicKey::new(&signature::ED25519, DISTRIBUTION_PUBLIC_KEY);
+    public_key
+        .verify(to_be_checked.as_slice(), remote_signature.as_slice())
+        .map_err(|_| UpdaterError::SignatureMatchFailed)?;
     Ok(())
 }

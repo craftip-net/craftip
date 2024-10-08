@@ -1,0 +1,1 @@
+../../../client-gui/src/updater_proto.rs
