@@ -36,7 +36,7 @@ fn main() {
     let args = Args::parse();
 
     if args.test_staging {
-        let json_url = format!("{}.new.json", UPDATE_URL);
+        let json_url = format!("{}.staging.json", UPDATE_URL);
         verify_release_json(json_url.as_str());
         println!("done!");
         return;
@@ -50,7 +50,7 @@ fn main() {
     );
 
     let _output = format!("{}/binaries", args.output.as_ref().unwrap());
-    let _output_latest = format!("{}/latest.json.new.json", args.output.as_ref().unwrap());
+    let _output_latest = format!("{}/latest.json.staging.json", args.output.as_ref().unwrap());
     let (output, output_latest) = (_output.as_str(), _output_latest.as_str());
 
     print!("Type in private key: ");

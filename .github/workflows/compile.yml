@@ -70,17 +70,17 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: x86_64-apple-darwin
-          path: x86_64
+          path: x86_64-apple-darwin
       - name: Download arm64
         uses: actions/download-artifact@v4
         with:
           name: aarch64-apple-darwin
-          path: aarch64
+          path: aarch64-apple-darwin
       - name: Combine app bundles
         shell: bash
         run: |
-          export X86_64_APPLE_DARWIN=x86_64/client-gui
-          export AARCH64_APPLE_DARWIN=aarch64/client-gui
+          export X86_64_APPLE_DARWIN=x86_64-apple-darwin/client-gui
+          export AARCH64_APPLE_DARWIN=aarch64-apple-darwin/client-gui
           export DMG_OUTPUT_PATH=CraftIP.dmg
           sh build/build-mac.sh
       - name: Upload artifact
@@ -88,3 +88,38 @@ jobs:
         with:
           name: CraftIP.dmg
           path: CraftIP.dmg
+
+      - name: Download windows
+        uses: actions/download-artifact@v4
+        with:
+          name: x86_64-pc-windows-msvc
+          path: x86_64-pc-windows-msvc
+
+      - name: Download bundler
+        uses: actions/download-artifact@v4
+        with:
+          name: bundle_x86_64-apple-darwin
+          path: bundle_x86_64-apple-darwin
+      - name: Download bundler
+        uses: actions/download-artifact@v4
+        with:
+          name: bundle_aarch64-apple-darwin
+          path: bundle_aarch64-apple-darwin
+
+      - name: Combine app bundles
+        shell: bash
+        run: |
+          mkdir -p bundle/bin
+          cp x86_64-apple-darwin/client-gui bundle/bin/x86_64-apple-darwin
+          cp aarch64-apple-darwin/client-gui bundle/bin/aarch64-apple-darwin
+          cp x86_64-pc-windows-msvc/client-gui.exe bundle/bin/x86_64-pc-windows-msvc
+          cp bundle_aarch64-apple-darwin/bundle bundle/bundle
+          
+          mkdir bundle/download
+          cp CraftIP.dmg bundle/download/CraftIP.dmg
+          cp x86_64-pc-windows-msvc/client-gui.exe bundle/download/CraftIP.exe
+      - name: upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle
+          path: bundle
