@@ -33,6 +33,16 @@ jobs:
           with:
             name: version
             path: target/version
+        - name: Build bundler
+          shell: bash
+          run: |
+            cd build/bundle
+            cargo build --release --target=${{ matrix.arch }}-apple-darwin
+        - name: Upload bundler
+          uses: actions/upload-artifact@v4
+          with:
+            name: bundle_${{ matrix.arch }}-apple-darwin
+            path: target/${{ matrix.arch }}-apple-darwin/release/bundle
 
 
   windows:
@@ -78,4 +88,3 @@ jobs:
         with:
           name: CraftIP.dmg
           path: CraftIP.dmg
-     
