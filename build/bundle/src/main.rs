@@ -1,7 +1,7 @@
 mod config;
 mod updater_proto;
 
-use crate::config::UPDATE_URL;
+use crate::config::{DISTRIBUTION_PUBLIC_KEY, UPDATE_URL};
 use crate::updater_proto::{
     decompress, get_bytes_for_signature, verify_signature, LatestRelease, Target, UpdaterError,
 };
@@ -15,7 +15,8 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime};
-use std::{env, fs};
+use std::fs;
+use ring::signature::KeyPair;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -83,7 +84,7 @@ fn main() {
         let compressed_exe = Path::new(output).join(compressed_exe_name.as_str());
         compress(executable.clone(), compressed_exe.clone()).unwrap();
         println!("Signing {:?}", compressed_exe);
-        let signature = sign_file(compressed_exe.clone(), key.as_str());
+        let signature = sign_file(compressed_exe.clone(), key.as_str(), version);
 
         let size = File::open(compressed_exe.clone())
             .unwrap()
@@ -153,27 +154,27 @@ fn verify_signature_of_file(
     target: &Target,
     version: &str,
 ) -> Result<(), UpdaterError> {
-    println!("Verifying...");
+    println!("Verifying {}...", target.target);
     let file_length = fs::read(archive.clone()).unwrap().len();
     assert_eq!(file_length, target.size as usize, "Size is not correct");
     assert_ne!(file_length, 0, "File length should not be zero");
 
     let hash = hash_file(archive.clone());
-    crate::updater_proto::verify_signature(hash.as_ref(), version, target.signature.as_str())
+    verify_signature(hash.as_ref(), version, target.signature.as_str())
         .expect(
         "Something went wrong. Could not verify signature. Are Public and private keys matching",
     );
     Ok(())
 }
 
-fn sign_file<P: AsRef<Path>>(file: P, key: &str) -> String {
+fn sign_file<P: AsRef<Path>>(file: P, key: &str, version: &str) -> String {
     let hash = hash_file(file);
 
-    let version = "0.0.1";
     let bytes_for_sig = get_bytes_for_signature(hash.as_ref(), version);
 
     let key = BASE64_STANDARD.decode(key).unwrap();
     let key = signature::Ed25519KeyPair::from_pkcs8_maybe_unchecked(&key).unwrap();
+    assert_eq!(key.public_key().as_ref(), DISTRIBUTION_PUBLIC_KEY, "Private key is not correct");
     let signature = key.sign(&bytes_for_sig);
 
     BASE64_STANDARD.encode(&signature)

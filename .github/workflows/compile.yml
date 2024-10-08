@@ -95,16 +95,9 @@ jobs:
           name: x86_64-pc-windows-msvc
           path: x86_64-pc-windows-msvc
 
-      - name: Download bundler
-        uses: actions/download-artifact@v4
-        with:
-          name: bundle_x86_64-apple-darwin
-          path: bundle_x86_64-apple-darwin
-      - name: Download bundler
-        uses: actions/download-artifact@v4
-        with:
-          name: bundle_aarch64-apple-darwin
-          path: bundle_aarch64-apple-darwin
+
+
+
       - name: Download version
         uses: actions/download-artifact@v4
         with:
@@ -118,12 +111,11 @@ jobs:
           cp x86_64-apple-darwin/client-gui bundle/bin/x86_64-apple-darwin
           cp aarch64-apple-darwin/client-gui bundle/bin/aarch64-apple-darwin
           cp x86_64-pc-windows-msvc/client-gui.exe bundle/bin/x86_64-pc-windows-msvc
-          cp bundle_aarch64-apple-darwin/bundle bundle/bundle
           cp version/version bundle/version
           
-          mkdir bundle/download
-          cp CraftIP.dmg bundle/download/CraftIP.dmg
-          cp x86_64-pc-windows-msvc/client-gui.exe bundle/download/CraftIP.exe
+          mkdir bundle/downloads
+          cp CraftIP.dmg bundle/downloads/CraftIP.dmg
+          cp x86_64-pc-windows-msvc/client-gui.exe bundle/downloads/CraftIP.exe
       - name: upload bundle
         uses: actions/upload-artifact@v4
         with:
