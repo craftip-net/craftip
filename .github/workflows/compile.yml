@@ -15,7 +15,7 @@ jobs:
         - run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y
         - name: Add architecture ${{ matrix.arch }}
           run: rustup target add ${{ matrix.arch }}-apple-darwin
-        - uses: actions/checkout@v3
+        - uses: actions/checkout@v4
         - name: Build application
           shell: bash
           run: |
@@ -48,14 +48,14 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Build
         run: |
           rustup target add x86_64-pc-windows-msvc
           cargo build --release --target x86_64-pc-windows-msvc
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: x86_64-pc-windows-msvc
           path: target/x86_64-pc-windows-msvc/release/client-gui.exe
@@ -65,7 +65,7 @@ jobs:
     needs: [build-macos, windows]
     runs-on: macos-12
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Download x86_64
         uses: actions/download-artifact@v4
         with:
@@ -105,6 +105,11 @@ jobs:
         with:
           name: bundle_aarch64-apple-darwin
           path: bundle_aarch64-apple-darwin
+      - name: Download version
+        uses: actions/download-artifact@v4
+        with:
+          name: version
+          path: version
 
       - name: Combine app bundles
         shell: bash
@@ -114,6 +119,7 @@ jobs:
           cp aarch64-apple-darwin/client-gui bundle/bin/aarch64-apple-darwin
           cp x86_64-pc-windows-msvc/client-gui.exe bundle/bin/x86_64-pc-windows-msvc
           cp bundle_aarch64-apple-darwin/bundle bundle/bundle
+          cp version/version bundle/version
           
           mkdir bundle/download
           cp CraftIP.dmg bundle/download/CraftIP.dmg
