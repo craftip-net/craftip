@@ -53,7 +53,7 @@ fn main() {
     let _output_latest = format!("{}/latest.json.new.json", args.output.as_ref().unwrap());
     let (output, output_latest) = (_output.as_str(), _output_latest.as_str());
 
-    print!("Type a password: ");
+    print!("Type in private key: ");
     std::io::stdout().flush().unwrap();
     let key = read_password().unwrap();
 
@@ -97,6 +97,7 @@ fn main() {
             signature,
             size,
         };
+
         verify_signature_of_file(compressed_exe.clone(), &json_target, version).unwrap();
 
         let decompression_test = temp_folder.path().join(target);
@@ -135,6 +136,7 @@ fn verify_release_json(url: &str) {
             .into_body()
             .read_to_vec()
             .unwrap();
+
         let archive = temp_folder.path().join(format!("{}.xz", target.target));
         File::create(archive.clone())
             .unwrap()
