@@ -79,6 +79,7 @@ jobs:
       - name: Combine app bundles
         shell: bash
         run: |
+          brew install create-dmg
           export X86_64_APPLE_DARWIN=x86_64-apple-darwin/client-gui
           export AARCH64_APPLE_DARWIN=aarch64-apple-darwin/client-gui
           export DMG_OUTPUT_PATH=CraftIP.dmg
