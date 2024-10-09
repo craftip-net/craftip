@@ -1,7 +1,7 @@
-use crate::updater_proto::{decompress, LatestRelease, Target, UpdaterError, verify_signature};
+use crate::config::UPDATE_URL;
+use crate::updater_proto::{decompress, verify_signature, LatestRelease, Target, UpdaterError};
 use ring::digest::{Context, SHA512};
 use semver::Version;
-use crate::config::UPDATE_URL;
 use std::env::consts::EXE_SUFFIX;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
@@ -127,7 +127,11 @@ impl Updater {
 
         println!("Downloaded to: {:?}", archive);
 
-        verify_signature(hash.as_ref(), self.version.as_ref(), self.target.signature.as_str())?;
+        verify_signature(
+            hash.as_ref(),
+            self.version.as_ref(),
+            self.target.signature.as_str(),
+        )?;
 
         println!("Extracting archive... ");
         let exe_name = "client-gui";

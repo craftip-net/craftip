@@ -1,10 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 mod backend;
+mod config;
 mod gui_channel;
 mod updater;
 mod updater_gui;
 mod updater_proto;
-mod config;
 
 use anyhow::{Context, Result};
 use std::sync::{Arc, Mutex};

@@ -1,13 +1,12 @@
-use std::fs;
 use anyhow::Result;
 use client::client::Client;
 use client::structs::{Server, ServerAuthentication};
 use shared::crypto::ServerPrivateKey;
+use std::fs;
 use tokio::sync::mpsc;
 
 #[tokio::main]
 pub async fn main() -> Result<()> {
-
     // Log to stdout (if you run with `RUST_LOG=debug`).
     let subscriber = tracing_subscriber::fmt()
         .compact()
@@ -51,7 +50,6 @@ pub async fn main() -> Result<()> {
 
     Ok(())
 }
-
 
 fn load_private_key() -> ServerPrivateKey {
     let project_dirs = directories_next::ProjectDirs::from("", "", "craftip-cli").unwrap();
