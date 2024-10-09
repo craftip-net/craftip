@@ -69,9 +69,9 @@ create-dmg \
   --icon "CraftIP.app" 70 90 \
   --hide-extension "CraftIP.app" \
   --app-drop-link 290 90 \
+  --add-file "can’t open.pdf" "${RESOURCES}/can not open.pdf" 180 260 \
   "${DMG_OUTPUT_PATH}" \
   "${BUILD_FOLDER}/dmg/"
 
-#  --add-file "open.pdf" "${BUILD_FOLDER}/dmg/open.pdf" 180 260 \
 
 echo "Dmg at ${DMG_OUTPUT_PATH}"
