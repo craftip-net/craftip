@@ -57,7 +57,21 @@ echo "clean up..."
 rm -r $ICON_BUILD.iconset
 
 echo "building dmg..."
-ln -s /Applications ${BUILD_FOLDER}/dmg/Applications
-hdiutil create -volname "CraftIP" -srcfolder "${BUILD_FOLDER}/dmg" -ov -format UDZO "${DMG_OUTPUT_PATH}"
+#ln -s /Applications ${BUILD_FOLDER}/dmg/Applications
+#hdiutil create -volname "CraftIP" -srcfolder "${BUILD_FOLDER}/dmg" -ov -format UDZO "${DMG_OUTPUT_PATH}"
 
 
+create-dmg \
+  --volname "CraftIP Installer" \
+  --background "$RESOURCES/dmg-background.png" \
+  --window-size 450 390 \
+  --icon-size 70 \
+  --icon "CraftIP.app" 70 90 \
+  --hide-extension "CraftIP.app" \
+  --app-drop-link 290 90 \
+  "${DMG_OUTPUT_PATH}" \
+  "${BUILD_FOLDER}/dmg/"
+
+#  --add-file "open.pdf" "${BUILD_FOLDER}/dmg/open.pdf" 180 260 \
+
+echo "Dmg at ${DMG_OUTPUT_PATH}"
