@@ -1,6 +1,6 @@
 [package]
 name = "client-gui"
-version = "0.0.1"
+version = "0.0.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -19,7 +19,7 @@ image = { version = "0.25.2", default-features = false, features = ["png"] }
 shared = { path = "../shared" }
 client = { path = "../client" }
 
-ureq = { version = "3.0.0-rc1", default-features = false, features = ["json", "rustls"] }
+ureq = { version = "2.10.1", default-features = false, features = ["json"] }
 tempfile = "3.9.0"
 current_platform = "0.2.0"
 semver = "1.0.22"
@@ -28,6 +28,8 @@ base64 = "0.22.1"
 ring = "0.17.7"
 liblzma = { version = "0.3.4", features = ["static"] }
 thiserror = "1.0.64"
+ehttp = { version = "0.5.0", features = ["json"] }
+poll-promise = "0.3.0"
 
 [build-dependencies]
 winres = "0.1"

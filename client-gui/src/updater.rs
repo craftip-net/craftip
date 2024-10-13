@@ -54,8 +54,7 @@ impl Updater {
 
         println!("hello from the updater");
         let release = resp
-            .into_body()
-            .read_json::<LatestRelease>()
+            .into_json::<LatestRelease>()
             .map_err(UpdaterError::ParsingError)?;
 
         let version =
@@ -106,7 +105,7 @@ impl Updater {
         println!("Downloading...");
 
         let resp = ureq::get(&self.target.url).call()?;
-        let resp = resp.into_body().into_reader();
+        let resp = resp.into_reader();
         let mut out = File::create(&archive).expect("failed to create file");
 
         let mut hash = Context::new(&SHA512);

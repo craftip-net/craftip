@@ -44,7 +44,7 @@ pub enum UpdaterError {
     #[error("HTTP Request failed")]
     RequestError(#[from] ureq::Error),
     #[error("Parsing error")]
-    ParsingError(ureq::Error),
+    ParsingError(io::Error),
     #[error("Could not parse version")]
     CouldNotParseVersion,
     #[error("OS architecture not available")]

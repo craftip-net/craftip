@@ -2,6 +2,7 @@
 mod backend;
 mod config;
 mod gui_channel;
+mod help_popup;
 mod updater;
 mod updater_gui;
 mod updater_proto;
@@ -16,6 +17,7 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::gui_channel::{GuiTriggeredChannel, GuiTriggeredEvent, ServerState};
+use crate::help_popup::HelpPopup;
 use crate::updater::UpdateInfo;
 use crate::updater_gui::{updater_gui_headline, updater_no_consent};
 use crate::updater_proto::UpdaterError;
@@ -130,6 +132,7 @@ struct MyApp {
     state: Arc<Mutex<GuiState>>,
     tx: GuiTriggeredChannel,
     frames_rendered: usize,
+    help: HelpPopup,
 }
 
 impl MyApp {
@@ -162,6 +165,7 @@ impl MyApp {
             tx: gui_tx,
             state,
             frames_rendered: 0,
+            help: Default::default(),
         }
     }
 }
@@ -172,10 +176,16 @@ impl eframe::App for MyApp {
         let mut state = self.state.lock().unwrap();
         // draw ui
         CentralPanel::default().show(ctx, |ui| {
+            self.help.render(ui);
+            ui.set_enabled(!self.help.is_open());
+
             egui::menu::bar(ui, |ui| {
                 ui.heading("CraftIP");
                 if state.loading {
                     ui.spinner();
+                }
+                if ui.button("Report a problem").clicked() {
+                    self.help.open();
                 }
                 ui.with_layout(Layout::right_to_left(Align::TOP), |ui| {
                     #[cfg(debug_assertions)]
@@ -346,23 +356,25 @@ impl ServerPanel {
                     });
                 });
             });
-            let (btn_txt,enabled) = match self.state {
-                ServerState::Disconnected => ("Connect", true),
-                ServerState::Connecting => ("Stop connecting", true),
-                ServerState::Connected => ("Disconnect", true),
-                ServerState::Disconnecting => ("Disconnecting...", false),
-            };
-
             ui.vertical(|ui| {
                 // center error
                 if let Some(error) = self.error.clone() {
                     ui.label(RichText::new(error).color(Color32::RED));
                 }
                 ui.set_enabled(enabled && self.edit_local.is_none());
+                let button = match self.state {
+                    ServerState::Disconnected => egui::Button::new("Connect"),
+                    ServerState::Connecting => egui::Button::new("Stop connecting"),
+                    ServerState::Connected => egui::Button::new("Disconnect"),
+                    ServerState::Disconnecting => {
+                        ui.set_enabled(false);
+                        egui::Button::new("Disconnecting...")
+                    },
+                };
                 if ui
                     .add_sized(
                         egui::vec2(ui.available_width(), 30.0),
-                        egui::Button::new(btn_txt),
+                        button,
                     )
                     .clicked()
                 {
