@@ -30,7 +30,7 @@ impl HelpPopup {
             .collapsible(false)
             .anchor(Align2::CENTER_CENTER, Vec2::default())
             .show(ui.ctx(), |ui| {
-                let label = "This program is still in its early stages. If you have a problem/suggestion, feel free to write it here!";
+                let label = "This program is still in its early stages. If you have a problem or suggestion, feel free to write it here!";
                 let label = Label::new(RichText::new(label));
                 ui.add_sized(Vec2::new(300.0, 10.0), label);
                 ui.label("");
