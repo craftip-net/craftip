@@ -5,14 +5,14 @@ use std::time::Duration;
 
 use futures::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::timeout;
 use tokio_util::codec::Framed;
 
 use shared::addressing::{DistributorError, Register};
 use shared::config;
-use shared::config::PROTOCOL_VERSION;
+use shared::config::{PROTOCOL_VERSION, TIMEOUT_IN_SEC};
 use shared::minecraft::MinecraftDataPacket;
 use shared::packet_codec::PacketCodec;
 use shared::proxy::{
@@ -80,6 +80,7 @@ impl Distribiutor {
 pub struct ProxyClient {
     register: Arc<Mutex<Register>>,
     hostname: String,
+    rx: Option<UnboundedReceiver<ClientToProxy>>
 }
 
 impl ProxyClient {
@@ -87,6 +88,7 @@ impl ProxyClient {
         ProxyClient {
             register,
             hostname: hostname.to_string(),
+            rx: None,
         }
     }
     /// HANDLE PROXY CLIENT
@@ -94,14 +96,8 @@ impl ProxyClient {
         &mut self,
         framed: &mut Framed<TcpStream, PacketCodec>,
     ) -> Result<(), DistributorError> {
-        let (tx, mut rx) = mpsc::unbounded_channel();
+        let rx = self.rx.as_mut().unwrap();
         let mut distributor = Distribiutor::default();
-
-        self.register
-            .lock()
-            .await
-            .servers
-            .insert(self.hostname.clone(), tx);
 
         // send connected
         let resp = SocketPacket::from(ProxyConnectedResponse {
@@ -148,7 +144,7 @@ impl ProxyClient {
                     }
                 }
                 // handle packets from the proxy client
-                result = timeout(Duration::from_secs(60), framed.next()) => {
+                result = timeout(Duration::from_secs(TIMEOUT_IN_SEC), framed.next()) => {
                     // catching timeout error
                     match result {
                         Ok(Some(Ok(packet))) => {
@@ -182,6 +178,22 @@ impl ProxyClient {
                 }
             }
         }
+        Ok(())
+    }
+
+    pub async fn register_connection(&mut self) -> Result<(), DistributorError> {
+        let (tx, rx) = mpsc::unbounded_channel();
+        {
+            let servers = &mut self.register
+                .lock()
+                .await
+                .servers;
+            if servers.contains_key(&self.hostname) {
+                return Err(DistributorError::ServerAlreadyConnected)
+            }
+            servers.insert(self.hostname.clone(), tx);
+        }
+        self.rx = Some(rx);
         Ok(())
     }
     pub async fn close_connection(&mut self) {
