@@ -1,13 +1,15 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::ops::Add;
 use std::sync::Arc;
-use std::time::Duration;
 
 use futures::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
+
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, Mutex};
-use tokio::time::timeout;
+use tokio::time::{Duration, Instant};
+use tokio::time::sleep_until;
 use tokio_util::codec::Framed;
 
 use shared::addressing::{DistributorError, Register};
@@ -39,14 +41,12 @@ impl Distribiutor {
         tx: UnboundedSender<MinecraftDataPacket>,
     ) -> Result<MinecraftClient, DistributorError> {
         let mut id = None;
-        let time = std::time::Instant::now();
         for id_found in 0..=config::MAXIMUM_CLIENTS {
             if !self.clients_id.contains_key(&id_found) {
                 id = Some(id_found);
                 break;
             }
         }
-        tracing::info!("finding id took {:?}", time.elapsed());
         let id = id.ok_or(DistributorError::TooManyClients)?;
         self.clients_id.insert(id, addr);
         let client = MinecraftClient { id, tx };
@@ -104,6 +104,7 @@ impl ProxyClient {
             version: PROTOCOL_VERSION,
         });
         framed.send(resp).await?;
+        let mut last_packet_recv = Instant::now();
         loop {
             tokio::select! {
                 // forward packets from the minecraft clients
@@ -144,10 +145,11 @@ impl ProxyClient {
                     }
                 }
                 // handle packets from the proxy client
-                result = timeout(Duration::from_secs(TIMEOUT_IN_SEC), framed.next()) => {
+                result = framed.next() => {
+                    last_packet_recv = Instant::now();
                     // catching timeout error
                     match result {
-                        Ok(Some(Ok(packet))) => {
+                        Some(Ok(packet)) => {
                             match packet {
                                 // if mc server disconnects mc client
                                 SocketPacket::ProxyDisconnect(client_id) => {
@@ -175,6 +177,10 @@ impl ProxyClient {
                             break
                         }
                     }
+                }
+                _ = sleep_until(last_packet_recv.add(Duration::from_secs(TIMEOUT_IN_SEC))) => {
+                    tracing::info!("socket timed out");
+                    break;
                 }
             }
         }
