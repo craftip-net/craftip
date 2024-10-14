@@ -2,14 +2,16 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedReceiver;
-use tokio::time::sleep;
+use tokio::task::JoinHandle;
+use tokio::time::{sleep, timeout};
 
 use crate::gui_channel::GuiTriggeredEvent;
 use crate::gui_channel::ServerState;
 use crate::{GuiState, UpdateState};
-use client::client::{Client, State};
+use client::client::Client;
+use client::structs::Stats;
 use client::structs::{ClientError, ControlTx};
-use client::structs::{Control, Stats};
+use shared::config::TIMEOUT_IN_SEC;
 
 pub struct Controller {
     pub gui_rx: UnboundedReceiver<GuiTriggeredEvent>,
@@ -31,7 +33,7 @@ impl Controller {
     }
 
     pub async fn update(&mut self) {
-        let mut control_tx: Option<ControlTx> = None;
+        let mut connection_task: Option<JoinHandle<()>> = None;
         let (stats_tx, mut stats_rx) = mpsc::unbounded_channel();
         loop {
             tokio::select! {
@@ -45,7 +47,7 @@ impl Controller {
                         Stats::ClientsConnected(clients) => {
                             tracing::info!("Clients connected: {}", clients);
                             self.state.lock().unwrap().set_active_server(|s| {
-                                s.connected = clients;
+                                s.state = ServerState::Connected(clients as u64);
                             }).unwrap();
                         }
                         Stats::Connected => {}
@@ -69,18 +71,19 @@ impl Controller {
                                 server.server = format!("{}:{}", server.server, server.local);
                             }
 
-                            let (control_tx_new, control_rx) = mpsc::unbounded_channel();
-                            control_tx = Some(control_tx_new);
 
-                            let client = Client::new(server, stats_tx.clone(), control_rx);
+                            let client = Client::new(server, stats_tx.clone());
+                            let state = self.state.clone();
 
-                            tokio::spawn(connection_loop(client, self.state.clone()));
+                            connection_task = Some(tokio::spawn(connection_loop(client, state.clone())));
+
                         }
                         GuiTriggeredEvent::Disconnect() => {
                             // sleep async 1 sec
-                            if let Some(control_tx) = &control_tx {
-                                control_tx.send(Control::Disconnect).unwrap();
+                            if let Some(control_tx) = connection_task.take() {
+                                control_tx.abort();
                             }
+                            self.state.lock().unwrap().set_active_server(|s|s.state = ServerState::Disconnected).unwrap()
                         }
                     }
                 }
@@ -90,57 +93,46 @@ impl Controller {
 }
 
 async fn connection_loop(mut client: Client, state: Arc<Mutex<GuiState>>) {
-    // connect
     let mut connection_attempt = 0;
     loop {
         if connection_attempt != 0 {
             sleep(Duration::from_secs(5)).await;
         }
-        match client.connect().await {
-            Ok(_) => {
-                connection_attempt = 0;
-                state
-                    .lock()
-                    .unwrap()
-                    .set_active_server(|s| {
-                        s.state = ServerState::Connected;
-                        s.connected = 0;
-                        s.error = None;
-                    })
-                    .unwrap();
-            }
-            Err(e) => {
-                tracing::error!("Error connecting: {}", e);
-                connection_attempt += 1;
-                state
-                    .lock()
-                    .unwrap()
-                    .set_active_server(|s| {
-                        s.error = Some(format!("Error connecting: {}", e));
-                        s.state = ServerState::Connecting(connection_attempt)
-                    })
-                    .unwrap();
-                continue;
-                //return Err(e);
-            }
-        }
-
-        // handle handle connection if connection was successful
-        let result = client.handle().await;
+        let connection_result = timeout(Duration::from_secs(TIMEOUT_IN_SEC), client.connect())
+            .await
+            .unwrap_or_else(|_| Err(ClientError::Timeout));
         state
             .lock()
             .unwrap()
-            .set_active_server(|s| {
-                if let Err(e) = &result {
-                    s.error = Some(format!("Connection error: {}", e));
-                } else {
-                    s.state = ServerState::Disconnected;
+            .set_active_server(|s| match &connection_result {
+                Ok(()) => {
+                    s.state = ServerState::Connected(0);
+                    s.error = None;
+                }
+                Err(e) => {
+                    s.error = Some(format!("Error connecting: {}", e));
+                    s.state = ServerState::Connecting(connection_attempt);
+                    tracing::error!("Error connecting: {}", e);
                 }
             })
             .unwrap();
-        // connection was terminated by the user
-        if result.is_ok() {
-            return;
+        if connection_result.is_err() {
+            connection_attempt += 1;
+            continue;
+        }
+
+        // handle connection if connection was successful
+        connection_attempt = 0;
+        match client.handle().await {
+            Ok(()) => return,
+            Err(err) => {
+                tracing::error!("Found the following error: {:?}", err);
+                state
+                    .lock()
+                    .unwrap()
+                    .set_active_server(|s| s.error = Some(format!("Connection error: {}", err)))
+                    .expect("Could not find active server")
+            }
         }
     }
 }

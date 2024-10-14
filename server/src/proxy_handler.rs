@@ -8,8 +8,8 @@ use tokio::net::TcpStream;
 
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, Mutex};
-use tokio::time::{Duration, Instant};
 use tokio::time::sleep_until;
+use tokio::time::{Duration, Instant};
 use tokio_util::codec::Framed;
 
 use shared::addressing::{DistributorError, Register};
@@ -80,7 +80,7 @@ impl Distribiutor {
 pub struct ProxyClient {
     register: Arc<Mutex<Register>>,
     hostname: String,
-    rx: Option<UnboundedReceiver<ClientToProxy>>
+    rx: Option<UnboundedReceiver<ClientToProxy>>,
 }
 
 impl ProxyClient {
@@ -190,12 +190,9 @@ impl ProxyClient {
     pub async fn register_connection(&mut self) -> Result<(), DistributorError> {
         let (tx, rx) = mpsc::unbounded_channel();
         {
-            let servers = &mut self.register
-                .lock()
-                .await
-                .servers;
+            let servers = &mut self.register.lock().await.servers;
             if servers.contains_key(&self.hostname) {
-                return Err(DistributorError::ServerAlreadyConnected)
+                return Err(DistributorError::ServerAlreadyConnected);
             }
             servers.insert(self.hostname.clone(), tx);
         }

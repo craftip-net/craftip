@@ -242,7 +242,6 @@ impl eframe::App for MyApp {
 struct ServerPanel {
     server: String,
     auth: ServerAuthentication,
-    connected: u16,
     local: String,
     edit_local: Option<String>,
     state: ServerState,
@@ -256,7 +255,6 @@ impl From<&Server> for ServerPanel {
             state: ServerState::Disconnected,
             server: server.server.clone(),
             auth: server.auth.clone(),
-            connected: 0,
             local: server.local.clone(),
             error: None,
             edit_local: None,
@@ -347,10 +345,10 @@ impl ServerPanel {
                                 ui.label("Disconnecting...");
                                 ui.spinner();
                             }
-                            ServerState::Connected => {
+                            ServerState::Connected(connected) => {
                                 // leaf green color
                                 ui.label(
-                                    RichText::new(format!("{} Clients", self.connected))
+                                    RichText::new(format!("{} Clients", connected))
                                         .color(Color32::from_rgb(0, 204, 0)),
                                 );
                                 ui.label("🔌");
@@ -368,7 +366,7 @@ impl ServerPanel {
                 let button = match self.state {
                     ServerState::Disconnected => egui::Button::new("Connect"),
                     ServerState::Connecting(_) => egui::Button::new("Stop connecting"),
-                    ServerState::Connected => egui::Button::new("Disconnect"),
+                    ServerState::Connected(_) => egui::Button::new("Disconnect"),
                     ServerState::Disconnecting => {
                         ui.set_enabled(false);
                         egui::Button::new("Disconnecting...")
@@ -383,7 +381,7 @@ impl ServerPanel {
                 {
                     self.error = None;
                     match self.state {
-                        ServerState::Connected | ServerState::Connecting(_) => {
+                        ServerState::Connected(_) | ServerState::Connecting(_) => {
                             self.state = ServerState::Disconnecting;
                             tx.send(GuiTriggeredEvent::Disconnect())
                                 .expect("failed to send disconnect event");

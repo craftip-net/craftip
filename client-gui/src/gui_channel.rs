@@ -20,10 +20,13 @@ impl From<&ServerPanel> for Server {
     }
 }
 
+pub type ClientsConnected = u64;
+pub type ConnectionAttempt = u64;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServerState {
     Disconnected,
-    Connecting(u64),
-    Connected,
+    Connecting(ConnectionAttempt),
+    Connected(ClientsConnected),
     Disconnecting,
 }

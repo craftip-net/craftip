@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::mem;
-use std::ops::Add;
+use std::ops::{Add, Sub};
 use std::time::Duration;
 use std::time::SystemTime;
 
-use anyhow::{bail, Context, Result};
-use futures::SinkExt;
+use anyhow::{anyhow, bail, Context, Result};
+use futures::{SinkExt, TryStreamExt};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, sleep_until, timeout, Instant};
@@ -27,12 +27,8 @@ pub struct Client {
     connections: HashMap<u16, ProxyToClientTx>,
     stats_tx: Option<StatsTx>,
     proxy: Option<Framed<TcpStream, PacketCodec>>,
-    control_rx: ControlRx,
     server: Server,
 }
-
-#[derive(Default)]
-pub struct State {}
 
 impl Client {
     fn add_connection(&mut self, id: u16, tx: ProxyToClientTx) {
@@ -62,13 +58,11 @@ impl Client {
 }
 
 impl Client {
-    pub fn new(server: Server, stats_tx: StatsTx, control_rx: ControlRx) -> Self {
-        let mut state = State::default();
+    pub fn new(server: Server, stats_tx: StatsTx) -> Self {
         Client {
             connections: Default::default(),
             server,
             stats_tx: Some(stats_tx),
-            control_rx,
             proxy: None,
         }
     }
@@ -96,10 +90,10 @@ impl Client {
         });
 
         proxy.send(hello).await?;
-        let challenge = match timeout(Duration::from_secs(10), proxy.next()).await {
-            Ok(Some(Ok(SocketPacket::ProxyAuthRequest(pkg)))) => pkg,
-            Err(_) => return Err(ClientError::Timeout),
-            Ok(e) => return Err(ClientError::UnexpectedPacket(format!("{:?}", e))),
+        let challenge = match proxy.next().await {
+            None => return Err(ClientError::ProxyClosedConnection),
+            Some(Ok(SocketPacket::ProxyAuthRequest(pkg))) => pkg,
+            Some(e) => return Err(ClientError::UnexpectedPacket(format!("{:?}", e))),
         };
 
         match &mut self.server.auth {
@@ -111,20 +105,14 @@ impl Client {
             }
         }
 
-        tokio::select! {
-            res = proxy.next() => match res {
-                Some(Ok(SocketPacket::ProxyHelloResponse(_hello_response))) => Ok(()),
-                Some(Ok(SocketPacket::ProxyError(e))) => Err(ClientError::ProxyError(e)),
-                None => Err(ClientError::ProxyClosedConnection),
-                Some(Err(e)) => Err(ClientError::ProtocolError(e)),
-                e => return Err(ClientError::UnexpectedPacket(format!("{:?}", e))),
-            }?,
-            res = self.control_rx.recv() => match res {
-                Some(Control::Disconnect) | None => {
-                    return Err(ClientError::UserClosedConnection)
-                }
-            }
-        }
+        match proxy.next().await {
+            Some(Ok(SocketPacket::ProxyHelloResponse(_hello_response))) => Ok(()),
+            Some(Ok(SocketPacket::ProxyError(e))) => Err(ClientError::ProxyError(e)),
+            None => Err(ClientError::ProxyClosedConnection),
+            Some(Err(e)) => Err(ClientError::ProtocolError(e)),
+            e => return Err(ClientError::UnexpectedPacket(format!("{:?}", e))),
+        }?;
+
         tracing::info!("Connected to proxy server!");
 
         if let Some(stats) = &self.stats_tx {
@@ -142,14 +130,6 @@ impl Client {
         let mut last_packet_recv = Instant::now();
         loop {
             tokio::select! {
-                // process control messages e.g. form gui
-                result = self.control_rx.recv() => {
-                    match result {
-                        Some(Control::Disconnect) | None => {
-                            return Ok(());
-                        }
-                    }
-                }
                 // send packets to proxy
                 Some(mut pkg) = to_proxy_rx.recv() => {
                     // doing this in a loop to only feed the socket if there are more packets pending to be sent
@@ -222,7 +202,6 @@ impl Client {
                 _ = sleep(Duration::from_secs(1)) => {
                     let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u16;
                     proxy.send(SocketPacket::ProxyPing(time)).await?;
-                    continue;
                 }
                 // terminate socket if TIMEOUT_IN_SEC no packet was received
                  _ = sleep_until(last_packet_recv.add(Duration::from_secs(TIMEOUT_IN_SEC))) => {

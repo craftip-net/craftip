@@ -76,7 +76,11 @@ pub async fn process_socket_connection(
                 }
             };
             if let Err(e) = client.register_connection().await {
-                frames.send(SocketPacket::ProxyError("Server already connected. Try again later!".to_string())).await?;
+                frames
+                    .send(SocketPacket::ProxyError(
+                        "Server already connected. Try again later!".to_string(),
+                    ))
+                    .await?;
                 tracing::warn!("Server already connected!");
                 return Err(e);
             }

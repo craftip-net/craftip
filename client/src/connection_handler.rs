@@ -100,7 +100,7 @@ impl ClientConnection {
 
 impl Drop for ClientConnection {
     fn drop(&mut self) {
-        tracing::info!("dropping client connection {}", self.client_id);
+        tracing::debug!("dropping client connection {}", self.client_id);
         if self.need_for_close {
             let _ = self
                 .proxy_tx
