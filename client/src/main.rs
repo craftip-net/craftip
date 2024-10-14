@@ -29,10 +29,9 @@ pub async fn main() -> Result<()> {
     };
     tracing::info!("Connecting to server: {}", server.server);
 
-    let (_control_tx_new, control_rx) = mpsc::unbounded_channel();
     let (stats_tx, mut _stats_rx) = mpsc::unbounded_channel();
 
-    let mut client = Client::new(server, stats_tx, control_rx);
+    let mut client = Client::new(server, stats_tx);
     // connect
     match client.connect().await {
         Ok(_) => {
