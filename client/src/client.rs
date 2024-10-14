@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::mem;
+use std::ops::Add;
 use std::time::Duration;
 use std::time::SystemTime;
 
@@ -6,11 +8,11 @@ use anyhow::{bail, Context, Result};
 use futures::SinkExt;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
-use tokio::time::{sleep, timeout};
+use tokio::time::{sleep, sleep_until, timeout, Instant};
 use tokio_stream::StreamExt;
 use tokio_util::codec::Framed;
 
-use shared::config::PROTOCOL_VERSION;
+use shared::config::{PROTOCOL_VERSION, TIMEOUT_IN_SEC};
 use shared::packet_codec::PacketCodec;
 use shared::proxy::{ProxyAuthenticator, ProxyDataPacket, ProxyHelloPacket};
 use shared::socket_packet::SocketPacket;
@@ -22,24 +24,18 @@ use crate::structs::{
 };
 
 pub struct Client {
-    state: State,
-    stats_tx: StatsTx,
+    connections: HashMap<u16, ProxyToClientTx>,
+    stats_tx: Option<StatsTx>,
     proxy: Option<Framed<TcpStream, PacketCodec>>,
     control_rx: ControlRx,
     server: Server,
 }
 
 #[derive(Default)]
-pub struct State {
-    connections: HashMap<u16, ProxyToClientTx>,
-    stats_tx: Option<StatsTx>,
-}
+pub struct State {}
 
-impl State {
-    pub fn set_stats_tx(&mut self, tx: StatsTx) {
-        self.stats_tx = Some(tx);
-    }
-    pub fn add_connection(&mut self, id: u16, tx: ProxyToClientTx) {
+impl Client {
+    fn add_connection(&mut self, id: u16, tx: ProxyToClientTx) {
         self.connections.insert(id, tx);
         if let Some(tx) = &self.stats_tx {
             tx.send(Stats::ClientsConnected(self.connections.len() as u16))
@@ -68,11 +64,10 @@ impl State {
 impl Client {
     pub fn new(server: Server, stats_tx: StatsTx, control_rx: ControlRx) -> Self {
         let mut state = State::default();
-        state.set_stats_tx(stats_tx.clone());
         Client {
+            connections: Default::default(),
             server,
-            stats_tx,
-            state,
+            stats_tx: Some(stats_tx),
             control_rx,
             proxy: None,
         }
@@ -131,15 +126,20 @@ impl Client {
             }
         }
         tracing::info!("Connected to proxy server!");
-        self.stats_tx
-            .send(Stats::Connected)
-            .map_err(|e| ClientError::Other(e.into()))?;
+
+        if let Some(stats) = &self.stats_tx {
+            stats
+                .send(Stats::Connected)
+                .map_err(|e| ClientError::Other(e.into()))?;
+        }
+
         self.proxy = Some(proxy);
         Ok(())
     }
     pub async fn handle(&mut self) -> Result<()> {
         let (to_proxy_tx, mut to_proxy_rx) = mpsc::unbounded_channel();
-        let proxy = self.proxy.as_mut().unwrap();
+        let mut proxy = mem::take(&mut self.proxy).unwrap();
+        let mut last_packet_recv = Instant::now();
         loop {
             tokio::select! {
                 // process control messages e.g. form gui
@@ -159,7 +159,7 @@ impl Client {
                                 SocketPacket::from(ProxyDataPacket::new(pkg, id))
                             },
                             ClientToProxy::RemoveMinecraftClient(id) => {
-                                self.state.remove_connection(id);
+                                self.remove_connection(id);
                                 SocketPacket::ProxyDisconnect(id)
                             },
                             ClientToProxy::Death(msg) => {
@@ -180,12 +180,13 @@ impl Client {
 
                 // receive proxy packets
                 result = proxy.next() => {
+                    last_packet_recv = Instant::now();
                     match result {
                         Some(Ok(msg)) => {
                             match msg {
                                 SocketPacket::ProxyJoin(client_id) => {
                                     let (mut client_connection, client_tx) = ClientConnection::new(to_proxy_tx.clone(), self.server.local.clone(), client_id).await;
-                                    self.state.add_connection(client_id, client_tx);
+                                    self.add_connection(client_id, client_tx);
                                     tokio::spawn(async move {
                                         if let Err(e) = client_connection.handle_client().await {
                                             tracing::error!("An Error occurred in the handle_client function: {}", e);
@@ -195,16 +196,18 @@ impl Client {
                                     });
                                 }
                                 SocketPacket::ProxyData(packet) => {
-                                    self.state.send_to(packet.client_id, packet.packet)?;
+                                    self.send_to(packet.client_id, packet.packet)?;
                                 }
                                 SocketPacket::ProxyDisconnect(client_id) => {
                                     // this can fail if the client is already disconnected
-                                    self.state.remove_connection(client_id);
+                                    self.remove_connection(client_id);
                                 }
                                 SocketPacket::ProxyPong(ping) => {
                                     let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u16;
                                     let ping = time.saturating_sub(ping);
-                                    self.stats_tx.send(Stats::Ping(ping))?;
+                                    if let Some(stats) = &self.stats_tx {
+                                        stats.send(Stats::Ping(ping))?;
+                                    }
                                 }
                                 _ => unimplemented!("Message not implemented!")
                             }
@@ -220,6 +223,11 @@ impl Client {
                     let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u16;
                     proxy.send(SocketPacket::ProxyPing(time)).await?;
                     continue;
+                }
+                // terminate socket if TIMEOUT_IN_SEC no packet was received
+                 _ = sleep_until(last_packet_recv.add(Duration::from_secs(TIMEOUT_IN_SEC))) => {
+                    tracing::error!("socket timed out");
+                    bail!("Connection timed out!");
                 }
             }
         }

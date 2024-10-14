@@ -335,11 +335,14 @@ impl ServerPanel {
                                     println!("delete button clicked");
                                 }
                             }
-                            ServerState::Connecting => {
+                            ServerState::Connecting(0) => {
                                 ui.label("Connecting...");
                                 ui.spinner();
                             }
-
+                            ServerState::Connecting(attempt) => {
+                                ui.label(format!("Connecting ({}x)", attempt).as_str());
+                                ui.spinner();
+                            }
                             ServerState::Disconnecting => {
                                 ui.label("Disconnecting...");
                                 ui.spinner();
@@ -364,7 +367,7 @@ impl ServerPanel {
                 ui.set_enabled(enabled && self.edit_local.is_none());
                 let button = match self.state {
                     ServerState::Disconnected => egui::Button::new("Connect"),
-                    ServerState::Connecting => egui::Button::new("Stop connecting"),
+                    ServerState::Connecting(_) => egui::Button::new("Stop connecting"),
                     ServerState::Connected => egui::Button::new("Disconnect"),
                     ServerState::Disconnecting => {
                         ui.set_enabled(false);
@@ -380,13 +383,13 @@ impl ServerPanel {
                 {
                     self.error = None;
                     match self.state {
-                        ServerState::Connected | ServerState::Connecting => {
+                        ServerState::Connected | ServerState::Connecting(_) => {
                             self.state = ServerState::Disconnecting;
                             tx.send(GuiTriggeredEvent::Disconnect())
                                 .expect("failed to send disconnect event");
                         }
                         ServerState::Disconnected => {
-                            self.state = ServerState::Connecting;
+                            self.state = ServerState::Connecting(0);
                             let mut server = Server::from(&self.clone());
                             let local = match server.local.parse::<u16>() {
                                 Ok(port) => {

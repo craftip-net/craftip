@@ -23,7 +23,7 @@ impl From<&ServerPanel> for Server {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServerState {
     Disconnected,
-    Connecting,
+    Connecting(u64),
     Connected,
     Disconnecting,
 }

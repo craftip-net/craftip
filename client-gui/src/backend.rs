@@ -1,12 +1,14 @@
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::time::sleep;
 
 use crate::gui_channel::GuiTriggeredEvent;
 use crate::gui_channel::ServerState;
 use crate::{GuiState, UpdateState};
-use client::client::Client;
-use client::structs::ControlTx;
+use client::client::{Client, State};
+use client::structs::{ClientError, ControlTx};
 use client::structs::{Control, Stats};
 
 pub struct Controller {
@@ -70,37 +72,9 @@ impl Controller {
                             let (control_tx_new, control_rx) = mpsc::unbounded_channel();
                             control_tx = Some(control_tx_new);
 
-                            let state = self.state.clone();
-                            let mut client = Client::new(server, stats_tx.clone(), control_rx);
-                            tokio::spawn(async move {
-                                // connect
-                                match client.connect().await {
-                                    Ok(_) => {
-                                        state.lock().unwrap().set_active_server(|s| {
-                                            s.state = ServerState::Connected;
-                                            s.connected = 0;
-                                            s.error = None;
-                                        }).unwrap();
-                                    }
-                                    Err(e) => {
-                                        tracing::error!("Error connecting: {}", e);
-                                        state.lock().unwrap().set_active_server(|s| {
-                                            s.error = Some(format!("Error connecting: {}", e));
-                                            s.state = ServerState::Disconnected;
-                                        }).unwrap();
-                                        return;
-                                    }
-                                }
+                            let client = Client::new(server, stats_tx.clone(), control_rx);
 
-                                // handle handle connection if connection was successful
-                                let err = client.handle().await;
-                                state.lock().unwrap().set_active_server(|s| {
-                                    if let Err(e) = err {
-                                        s.error = Some(format!("Error connecting: {}", e));
-                                    }
-                                    s.state = ServerState::Disconnected;
-                                }).unwrap();
-                            });
+                            tokio::spawn(connection_loop(client, self.state.clone()));
                         }
                         GuiTriggeredEvent::Disconnect() => {
                             // sleep async 1 sec
@@ -111,6 +85,62 @@ impl Controller {
                     }
                 }
             }
+        }
+    }
+}
+
+async fn connection_loop(mut client: Client, state: Arc<Mutex<GuiState>>) {
+    // connect
+    let mut connection_attempt = 0;
+    loop {
+        if connection_attempt != 0 {
+            sleep(Duration::from_secs(5)).await;
+        }
+        match client.connect().await {
+            Ok(_) => {
+                connection_attempt = 0;
+                state
+                    .lock()
+                    .unwrap()
+                    .set_active_server(|s| {
+                        s.state = ServerState::Connected;
+                        s.connected = 0;
+                        s.error = None;
+                    })
+                    .unwrap();
+            }
+            Err(e) => {
+                tracing::error!("Error connecting: {}", e);
+                connection_attempt += 1;
+                state
+                    .lock()
+                    .unwrap()
+                    .set_active_server(|s| {
+                        s.error = Some(format!("Error connecting: {}", e));
+                        s.state = ServerState::Connecting(connection_attempt)
+                    })
+                    .unwrap();
+                continue;
+                //return Err(e);
+            }
+        }
+
+        // handle handle connection if connection was successful
+        let result = client.handle().await;
+        state
+            .lock()
+            .unwrap()
+            .set_active_server(|s| {
+                if let Err(e) = &result {
+                    s.error = Some(format!("Connection error: {}", e));
+                } else {
+                    s.state = ServerState::Disconnected;
+                }
+            })
+            .unwrap();
+        // connection was terminated by the user
+        if result.is_ok() {
+            return;
         }
     }
 }
