@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use bytes::BytesMut;
 use shared::minecraft::MinecraftDataPacket;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -37,18 +38,18 @@ impl ClientConnection {
     pub async fn handle_client(&mut self) -> Result<()> {
         tracing::info!("opening new client with id {}", self.client_id);
         // connect to server
-        let mut buf = [0; 1024];
         let mut mc_server = TcpStream::connect(&self.mc_server)
             .await
             .context(format!("could not connect to {}", &self.mc_server))?;
         mc_server.set_nodelay(true)?;
         loop {
+            let mut buf = BytesMut::new();
             tokio::select! {
                 pkg = self.client_rx.recv() => {
                     //tracing::info!("Sending packet to client: {:?}", pkg);
                     match pkg {
                         Some(packet) => {
-                            if let Err(err) = mc_server.write_all(&packet.data).await {
+                            if let Err(err) = mc_server.write_all(packet.as_ref()).await {
                                 tracing::error!("write_all failed: {}", err);
                                 break;
                             }
@@ -59,7 +60,7 @@ impl ClientConnection {
                         }
                     }
                 }
-                n = mc_server.read(&mut buf) => {
+                n = mc_server.read_buf(&mut buf) => {
                     let n = match n {
                         Ok(n) => n,
                         Err(err) => {
@@ -73,7 +74,8 @@ impl ClientConnection {
                     }
                     tracing::debug!("recv pkg from mc srv len: {}", n);
                     // encapsulate in ProxyDataPacket
-                    let packet = ClientToProxy::Packet(self.client_id, MinecraftDataPacket { data: buf[0..n].to_vec() });
+                    let packet = MinecraftDataPacket::from(buf.split().freeze());
+                    let packet = ClientToProxy::Packet(self.client_id,  packet);
 
                     if let Err(e) = self.proxy_tx.send(packet) {
                         tracing::error!("tx send failed: {}", e);
@@ -88,7 +90,7 @@ impl ClientConnection {
     }
     /// Sends a disconnect packet to the proxy server
     pub async fn close(&self) {
-        // if this fails, channel is already closed. Therefore not important
+        // if this fails, channel is already closed. Therefore, not important
         let _ = self
             .proxy_tx
             .send(ClientToProxy::RemoveMinecraftClient(self.client_id));

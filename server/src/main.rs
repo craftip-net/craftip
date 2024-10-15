@@ -37,9 +37,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         tokio::spawn(async move {
             match process_socket_connection(socket, register).await {
                 Ok(_) => tracing::info!("client disconnected"),
-                Err(DistributorError::UnknownError(err)) => {
-                    tracing::error!("client error: {}", err)
-                }
                 Err(e) => {
                     tracing::info!("client error: {:?}", e);
                 }

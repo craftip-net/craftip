@@ -1,11 +1,10 @@
 use std::mem::size_of;
 
-use bytes::{Buf, BytesMut};
-use serde::{Deserialize, Serialize};
+use bytes::{Buf, Bytes, BytesMut};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::cursor::{CustomCursor, CustomCursorMethods};
 use crate::datatypes::PacketError;
-use crate::proxy::ProxyDataPacket;
 
 const OLD_MINECRAFT_START: [u8; 27] = [
     0xFE, 0x01, 0xFA, 0x00, 0x0B, 0x00, 0x4D, 0x00, 0x43, 0x00, 0x7C, 0x00, 0x50, 0x00, 0x69, 0x00,
@@ -19,25 +18,47 @@ pub struct MinecraftHelloPacket {
     pub version: i32,
     pub hostname: String,
     pub port: u32,
-    pub data: Vec<u8>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
-pub struct MinecraftDataPacket {
-    pub data: Vec<u8>,
-}
-
-impl From<ProxyDataPacket> for MinecraftDataPacket {
-    fn from(packet: ProxyDataPacket) -> Self {
-        packet.packet
-    }
-}
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct MinecraftDataPacket(pub Bytes);
 
 impl MinecraftDataPacket {
-    pub fn new(buf: &mut BytesMut) -> Result<MinecraftDataPacket, PacketError> {
-        Ok(MinecraftDataPacket {
-            data: buf.split_to(buf.len()).to_vec(),
-        })
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+impl From<Bytes> for MinecraftDataPacket {
+    fn from(value: Bytes) -> Self {
+        Self(value)
+    }
+}
+impl AsRef<[u8]> for MinecraftDataPacket {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+// todo
+impl<'de> Deserialize<'de> for MinecraftDataPacket {
+    fn deserialize<D>(_deserializer: D) -> Result<MinecraftDataPacket, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        unimplemented!("This should never be called. It should be explicitly converted!")
+    }
+}
+// todo
+impl<'de> Serialize for MinecraftDataPacket {
+    fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        unimplemented!("This should never be called. It should be explicitly converted!")
     }
 }
 
@@ -97,7 +118,6 @@ impl MinecraftHelloPacket {
             version: version as i32,
             port,
             hostname,
-            data: buf.split_to(cursor.position() as usize).to_vec(),
         })
     }
     fn old_connect_pkg(buf: &mut BytesMut) -> Result<MinecraftHelloPacket, PacketError> {
@@ -120,7 +140,6 @@ impl MinecraftHelloPacket {
             version: version as i32,
             port,
             hostname,
-            data: buf.split_to(cursor.position() as usize).to_vec(),
         })
     }
 
@@ -145,7 +164,6 @@ impl MinecraftHelloPacket {
             port: port as u32,
             version,
             hostname,
-            data: buf.split_to(cursor.position() as usize).to_vec(),
         })
     }
 }

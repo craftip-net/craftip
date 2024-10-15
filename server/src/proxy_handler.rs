@@ -140,7 +140,7 @@ impl ProxyClient {
                             result = pkg_next;
                         } else {
                             framed.send(socket_packet).await?;
-                            break;
+                            break 'inner;
                         }
                     }
                 }
@@ -157,8 +157,7 @@ impl ProxyClient {
                                 }
                                 SocketPacket::ProxyData(packet) => {
                                     if let Some(client) = distributor.get_by_id(packet.client_id) {
-                                        let mc_packet = MinecraftDataPacket::from(packet);
-                                        if let Err(e) = client.tx.send(mc_packet) {
+                                        if let Err(e) = client.tx.send(packet.data) {
                                             tracing::error!("could not send to minecraft client: {}", e);
                                         }
                                     }

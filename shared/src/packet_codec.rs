@@ -59,33 +59,8 @@ impl Decoder for PacketCodec {
         /*if buf.len() > self.max_length {
             return Err(PacketCodecError::MaxLineLengthExceeded);
         }*/
-        let result = match self.protocol {
-            // first packet
-            Protocol::Unknown => {
-                let result = SocketPacket::parse_first_package(buf);
-                match result.as_ref() {
-                    Ok(SocketPacket::ProxyHello(pkg)) => {
-                        tracing::debug!("::::::::::::: Changing connection to proxy protocol version {} ::::::::::::::", pkg.version);
-                        self.protocol = Protocol::Proxy(pkg.version as u32);
-                    }
-                    Ok(SocketPacket::MCHello(pkg)) => {
-                        tracing::debug!("::::::::::::: Changing connection to MC protocol version {} ::::::::::::::", pkg.version);
-                        self.protocol = Protocol::MC(pkg.version as u32);
-                    }
-                    _ => {
-                        self.protocol = Protocol::Unknown;
-                    }
-                }
-                result
-            }
-            _ => SocketPacket::parse_packet(buf, &self.protocol),
-        };
-        match result {
-            Ok(packet) => Ok(Some(packet)),
-            Err(PacketError::TooSmall) => Ok(None),
-            Err(e) => Err(e),
-        }
-        .map_err(PacketCodecError::from)
+
+        SocketPacket::decode_from(buf).map_err(PacketCodecError::from)
     }
 }
 
@@ -99,33 +74,12 @@ impl Encoder<Bytes> for PacketCodec {
     }
 }
 
-impl Encoder<BytesMut> for PacketCodec {
-    type Error = io::Error;
-
-    fn encode(&mut self, data: BytesMut, buf: &mut BytesMut) -> Result<(), io::Error> {
-        buf.reserve(data.len());
-        buf.put(data);
-        Ok(())
-    }
-}
-
 impl Encoder<SocketPacket> for PacketCodec {
     type Error = io::Error;
 
     fn encode(&mut self, pkg: SocketPacket, buf: &mut BytesMut) -> Result<(), io::Error> {
-        let data = match pkg {
-            SocketPacket::MCHello(packet) => packet.data,
-            SocketPacket::MCData(packet) => packet.data,
-            SocketPacket::Unknown => {
-                tracing::error!("UnknownPacket: {:?}", pkg);
-                "UnknownPacket".to_string().into_bytes()
-            }
-            packet => packet
-                .encode()
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?,
-        };
-        buf.reserve(data.len());
-        buf.put(&data[..]);
+        pkg.encode_into(buf)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         Ok(())
     }
 }

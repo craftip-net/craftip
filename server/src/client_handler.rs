@@ -1,20 +1,19 @@
+use bytes::{Buf, BytesMut};
 use std::net::SocketAddr;
 
-use futures::{SinkExt, StreamExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedReceiver;
-use tokio_util::codec::Framed;
 
 use shared::addressing::{DistributorError, Tx};
 use shared::distributor_error;
 use shared::minecraft::{MinecraftDataPacket, MinecraftHelloPacket};
-use shared::packet_codec::PacketCodec;
-use shared::socket_packet::{ClientToProxy, SocketPacket};
+use shared::socket_packet::ClientToProxy;
 
 #[derive(Debug)]
 pub struct MCClient {
-    frames: Framed<TcpStream, PacketCodec>,
+    socket: TcpStream,
     rx: UnboundedReceiver<MinecraftDataPacket>,
     addr: SocketAddr,
     proxy_tx: Tx,
@@ -25,35 +24,31 @@ impl MCClient {
     /// Create a new instance of `Peer`.
     pub(crate) async fn new(
         proxy_tx: Tx,
-        frames: Framed<TcpStream, PacketCodec>,
+        socket: TcpStream,
         hello_packet: MinecraftHelloPacket,
+        start_data: MinecraftDataPacket,
     ) -> Result<Self, DistributorError> {
         // Get the client socket address
-        let addr = frames
-            .get_ref()
+        let addr = socket
             .peer_addr()
             .map_err(distributor_error!("could not get peer address"))?;
         let hostname = hello_packet.hostname;
         let (tx, rx) = mpsc::unbounded_channel();
         tracing::info!("sending client tx to proxy client {}", hostname);
+
         proxy_tx
             .send(ClientToProxy::AddMinecraftClient(addr, tx))
             .map_err(|_| {
                 DistributorError::UnknownError("could not add minecraft client".to_string())
             })?;
         proxy_tx
-            .send(ClientToProxy::Packet(
-                addr,
-                MinecraftDataPacket {
-                    data: hello_packet.data,
-                },
-            ))
+            .send(ClientToProxy::Packet(addr, start_data))
             .map_err(|_| {
                 DistributorError::UnknownError("could not add minecraft client".to_string())
             })?;
 
         Ok(MCClient {
-            frames,
+            socket,
             rx,
             proxy_tx,
             addr,
@@ -63,17 +58,17 @@ impl MCClient {
     /// HANDLE MC CLIENT
     pub async fn handle(&mut self) -> Result<(), DistributorError> {
         loop {
+            let mut buf = BytesMut::new();
             tokio::select! {
                 res = self.rx.recv() => {
                     match res {
                         Some(mut pkg) => {
                             loop {
-                                let packet = SocketPacket::from(pkg);
                                 if let Ok(pkg_next) = self.rx.try_recv() {
-                                    self.frames.feed(packet).await.map_err(distributor_error!("could not feed packet"))?;
+                                    self.socket.write_all(pkg.as_ref()).await.map_err(distributor_error!("could not feed packet"))?;
                                     pkg = pkg_next;
                                 } else {
-                                    self.frames.send(packet).await.map_err(distributor_error!("could not send packet"))?;
+                                    self.socket.write_all(pkg.as_ref()).await.map_err(distributor_error!("could not send packet"))?;
                                     break;
                                 }
                             }
@@ -85,23 +80,23 @@ impl MCClient {
                         }
                     }
                 }
-                result = self.frames.next() => match result {
-                    Some(Ok(SocketPacket::MCData(packet))) => {
+                len = self.socket.read_buf(&mut buf) => match len {
+                    // The stream has been exhausted.
+                    Ok(0) => break,
+                    Ok(len) => {
+                        let packet = MinecraftDataPacket::from(buf.split().freeze());
+
                         if let Err(e) = self.proxy_tx.send(ClientToProxy::Packet(self.addr, packet)) {
                             tracing::error!("could not send to proxy distributor: {}", e);
                             break;
                         }
                     }
                     // An error occurred.
-                    Some(Err(e)) => {
+                    Err(e) => {
                         tracing::error!("Error while receiving: {:?}", e);
                         break;
                     }
-                    // The stream has been exhausted.
-                    None => break,
-                    obj => {
-                        tracing::error!("received unknown packet from client {:?}", obj);
-                    }
+
                 },
             }
         }

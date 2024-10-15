@@ -1,26 +1,27 @@
 use std::collections::HashMap;
 use std::mem;
-use std::ops::{Add, Sub};
+use std::ops::Add;
 use std::time::Duration;
 use std::time::SystemTime;
 
-use anyhow::{anyhow, bail, Context, Result};
-use futures::{SinkExt, TryStreamExt};
+use anyhow::{bail, Context, Result};
+use futures::SinkExt;
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
-use tokio::time::{sleep, sleep_until, timeout, Instant};
+use tokio::time::{sleep, sleep_until, Instant};
 use tokio_stream::StreamExt;
 use tokio_util::codec::Framed;
 
-use shared::config::{PROTOCOL_VERSION, TIMEOUT_IN_SEC};
+use shared::config::{PROTOCOL_VERSION, PROXY_IDENTIFIER, TIMEOUT_IN_SEC};
 use shared::packet_codec::PacketCodec;
 use shared::proxy::{ProxyAuthenticator, ProxyDataPacket, ProxyHelloPacket};
 use shared::socket_packet::SocketPacket;
 
 use crate::connection_handler::ClientConnection;
 use crate::structs::{
-    ClientError, ClientToProxy, Control, ControlRx, ProxyToClient, ProxyToClientTx, Server,
-    ServerAuthentication, Stats, StatsTx,
+    ClientError, ClientToProxy, ProxyToClient, ProxyToClientTx, Server, ServerAuthentication,
+    Stats, StatsTx,
 };
 
 pub struct Client {
@@ -75,8 +76,10 @@ impl Client {
             .await
             .map_err(|_| ClientError::MinecraftServerNotFound)?;
         // connect to proxy
-        let proxy_stream = TcpStream::connect(format!("{}:25565", &self.server.server)).await?;
+        let mut proxy_stream = TcpStream::connect(format!("{}:25565", &self.server.server)).await?;
         proxy_stream.set_nodelay(true)?;
+        // identifying as proxy
+        proxy_stream.write_all(PROXY_IDENTIFIER.as_bytes()).await?;
         let mut proxy = Framed::new(proxy_stream, PacketCodec::new(1024 * 4));
 
         let hello = SocketPacket::from(ProxyHelloPacket {
@@ -176,7 +179,7 @@ impl Client {
                                     });
                                 }
                                 SocketPacket::ProxyData(packet) => {
-                                    self.send_to(packet.client_id, packet.packet)?;
+                                    self.send_to(packet.client_id, packet.data)?;
                                 }
                                 SocketPacket::ProxyDisconnect(client_id) => {
                                     // this can fail if the client is already disconnected

@@ -14,6 +14,8 @@ pub enum PacketError {
     NotMatching,
     #[error("There has been an error during encoding")]
     EncodingError,
+    #[error("Packet too long")]
+    TooLong,
 }
 
 pub fn get_varint(buf: &[u8], start: usize) -> Result<(i32, usize), PacketError> {

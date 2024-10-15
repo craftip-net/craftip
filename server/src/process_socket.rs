@@ -1,12 +1,18 @@
 use crate::client_handler::MCClient;
 use crate::proxy_handler::ProxyClient;
+use anyhow::{Context, Result};
+use bytes::{BufMut, BytesMut};
 use futures::SinkExt;
 use shared::addressing::{DistributorError, Register};
+use shared::config::PROXY_IDENTIFIER;
 use shared::distributor_error;
+use shared::minecraft::{MinecraftDataPacket, MinecraftHelloPacket};
 use shared::packet_codec::PacketCodec;
 use shared::socket_packet::SocketPacket;
 use std::sync::Arc;
+use std::thread::sleep;
 use std::time::Duration;
+use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
@@ -16,31 +22,56 @@ use tokio_util::codec::Framed;
 /// This function handles the connection to one client
 /// it decides if the client is a minecraft client or a proxy client
 /// forwards the traffic to the other side
-/// encapsulates/decapsulates the packets
+/// encapsulates/encapsulates the packets
 pub async fn process_socket_connection(
-    socket: TcpStream,
+    mut socket: TcpStream,
     register: Arc<Mutex<Register>>,
-) -> Result<(), DistributorError> {
+) -> Result<()> {
     socket
         .set_nodelay(true)
         .map_err(distributor_error!("could not set nodelay true"))?;
+    let mut first_buf = [0u8; PROXY_IDENTIFIER.as_bytes().len()];
+    socket.read_exact(&mut first_buf).await?;
+
+    if first_buf != PROXY_IDENTIFIER.as_bytes() {
+        let mut buf = BytesMut::new();
+        let packet = async {
+            buf.put(&first_buf[..]);
+            socket.try_read_buf(&mut buf).unwrap();
+            loop {
+                if let Ok(packet) = MinecraftHelloPacket::new(&mut buf.clone()) {
+                    break packet;
+                }
+                socket.read_buf(&mut buf).await.unwrap();
+            }
+        }
+        .await;
+
+        let proxy_tx = register.lock().await.servers.get(&packet.hostname).cloned();
+        let proxy_tx = proxy_tx.ok_or(DistributorError::ServerNotFound(packet.hostname.clone()))?;
+
+        let mut client = MCClient::new(
+            proxy_tx.clone(),
+            socket,
+            packet,
+            MinecraftDataPacket::from(buf.split().freeze()),
+        )
+        .await?;
+
+        client.handle().await.context("Handler failed")?;
+        return Ok(());
+    }
+
+    //println!("{:?}", buf);
     let mut frames = Framed::new(socket, PacketCodec::new(1024 * 8));
     // In a loop, read data from the socket and write the data back.
+
+    // todo error handling
     let packet = frames.next().await.ok_or(DistributorError::UnknownError(
         "could not read first packet".to_string(),
-    ))?;
-    let packet = packet.map_err(distributor_error!("could not read packet"))?;
+    ))??;
 
     match packet {
-        SocketPacket::MCHello(packet) => {
-            let proxy_tx = register.lock().await.servers.get(&packet.hostname).cloned();
-            let proxy_tx =
-                proxy_tx.ok_or(DistributorError::ServerNotFound(packet.hostname.clone()))?;
-
-            let mut client = MCClient::new(proxy_tx.clone(), frames, packet).await?;
-
-            client.handle().await?;
-        }
         SocketPacket::ProxyHello(packet) => {
             tracing::info!(
                 "Proxy client connected for {} from {}",
@@ -72,7 +103,7 @@ pub async fn process_socket_connection(
                             e
                         )))
                         .await?;
-                    return Err(e);
+                    return Err(e.into());
                 }
             };
             if let Err(e) = client.register_connection().await {
@@ -82,11 +113,12 @@ pub async fn process_socket_connection(
                     ))
                     .await?;
                 tracing::warn!("Server already connected!");
-                return Err(e);
+                return Err(e.into());
             }
+            tracing::info!("Server {} registered and connected", packet.hostname);
             let response = client.handle(&mut frames).await;
             client.close_connection().await;
-            response?;
+            response.context("proxy handler failed")?;
         }
         _ => {
             tracing::error!("Unknown protocol");
