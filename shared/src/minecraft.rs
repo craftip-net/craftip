@@ -173,7 +173,7 @@ impl MinecraftHelloPacket {
 #[cfg(test)]
 mod test {
     use crate::minecraft::MinecraftDataPacket;
-    use bytes::Bytes;
+    use tokio_util::bytes::Bytes;
 
     #[test]
 

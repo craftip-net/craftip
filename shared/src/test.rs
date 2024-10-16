@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use bytes::{BufMut, BytesMut};
+    use tokio_util::bytes::{BufMut, BytesMut};
 
     use crate::datatypes::get_varint;
     use crate::minecraft::MinecraftHelloPacket;

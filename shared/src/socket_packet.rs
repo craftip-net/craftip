@@ -136,7 +136,7 @@ mod tests {
     use crate::minecraft::MinecraftDataPacket;
     use crate::proxy::ProxyDataPacket;
     use crate::socket_packet::SocketPacket;
-    use bytes::{Bytes, BytesMut};
+    use tokio_util::bytes::{Bytes, BytesMut};
 
     fn create_packets() -> Vec<SocketPacket> {
         let ping = SocketPacket::ProxyPing(1);
