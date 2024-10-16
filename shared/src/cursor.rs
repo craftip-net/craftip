@@ -1,7 +1,7 @@
 use crate::datatypes::{get_varint, PacketError};
-use bytes::Buf;
 use std::io::Cursor;
 use std::mem::size_of;
+use tokio_util::bytes::Buf;
 
 pub type CustomCursor = Cursor<Vec<u8>>;
 

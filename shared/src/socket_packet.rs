@@ -3,11 +3,11 @@ use std::ops::{BitAnd, BitOr, Not};
 
 use crate::config::MAXIMUM_PACKET_SIZE;
 use crate::crypto::{ChallengeDataType, SignatureDataType};
-use bytes::{Buf, BufMut, BytesMut};
 use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
+use tokio_util::bytes::{Buf, BufMut, BytesMut};
 
 use crate::datatypes::PacketError;
 use crate::minecraft::MinecraftDataPacket;

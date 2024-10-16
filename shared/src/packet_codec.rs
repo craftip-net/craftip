@@ -1,8 +1,8 @@
 use crate::datatypes::PacketError;
 use crate::socket_packet::SocketPacket;
-use bytes::{BufMut, Bytes, BytesMut};
 use std::io;
 use thiserror::Error;
+use tokio_util::bytes::{BufMut, Bytes, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
 
 /// An error occurred while encoding or decoding a frame

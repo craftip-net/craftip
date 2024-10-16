@@ -1,7 +1,7 @@
 use anyhow::{bail, Context};
-use bytes::{BufMut, BytesMut};
 use std::io;
 use std::net::SocketAddr;
+use tokio_util::bytes::{BufMut, BytesMut};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::OwnedReadHalf;

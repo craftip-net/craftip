@@ -1,7 +1,7 @@
 use std::mem::size_of;
 
-use bytes::{Buf, Bytes, BytesMut};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use tokio_util::bytes::{Buf, Bytes, BytesMut};
 
 use crate::cursor::{CustomCursor, CustomCursorMethods};
 use crate::datatypes::PacketError;
