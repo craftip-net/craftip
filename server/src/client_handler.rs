@@ -1,3 +1,4 @@
+use anyhow::Context;
 use bytes::{BufMut, BytesMut};
 use std::io;
 use std::net::SocketAddr;
@@ -32,7 +33,7 @@ impl MCClient {
         socket: TcpStream,
         hello_packet: MinecraftHelloPacket,
         start_data: MinecraftDataPacket,
-    ) -> Result<Self, DistributorError> {
+    ) -> anyhow::Result<Self> {
         // Get the client socket address
         let addr = socket
             .peer_addr()
@@ -43,14 +44,10 @@ impl MCClient {
 
         proxy_tx
             .send(ClientToProxy::AddMinecraftClient(addr, tx))
-            .map_err(|_| {
-                DistributorError::UnknownError("could not add minecraft client".to_string())
-            })?;
+            .context("Send failed")?;
         proxy_tx
             .send(ClientToProxy::Packet(addr, start_data))
-            .map_err(|_| {
-                DistributorError::UnknownError("could not add minecraft client".to_string())
-            })?;
+            .context("Send failed")?;
 
         Ok(MCClient {
             socket: Some(socket),

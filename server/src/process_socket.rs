@@ -26,11 +26,20 @@ pub async fn process_socket_connection(
     socket.set_nodelay(true)?;
 
     let mut first_buf = [0u8; PROXY_IDENTIFIER.as_bytes().len()];
-    timeout(socket.read_exact(&mut first_buf)).await?;
+    if let Err(e) = timeout(socket.read_exact(&mut first_buf)).await {
+        tracing::debug!("Error while connecting to socket {:?}", e);
+        return Ok(());
+    }
 
     if first_buf != PROXY_IDENTIFIER.as_bytes() {
         let (packet, packet_data) =
-            timeout(first_minecraft_packet(&mut socket, &first_buf)).await?;
+            match timeout(first_minecraft_packet(&mut socket, &first_buf)).await {
+                Err(e) => {
+                    tracing::debug!("Connection incomplete {:?}", e);
+                    return Ok(());
+                }
+                Ok(e) => e,
+            };
 
         let proxy_tx = register.lock().await.servers.get(&packet.hostname).cloned();
         let proxy_tx = proxy_tx.ok_or(DistributorError::ServerNotFound(packet.hostname.clone()))?;

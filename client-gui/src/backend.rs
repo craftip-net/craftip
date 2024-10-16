@@ -11,6 +11,8 @@ use crate::{GuiState, UpdateState};
 use client::client::Client;
 use client::structs::ClientError;
 use client::structs::Stats;
+use shared::config::TIMEOUT_IN_SEC;
+
 pub struct Controller {
     pub gui_rx: UnboundedReceiver<GuiTriggeredEvent>,
     pub updater_rx: UnboundedReceiver<UpdateState>,

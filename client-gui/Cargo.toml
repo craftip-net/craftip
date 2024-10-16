@@ -36,7 +36,7 @@ winres = "0.1"
 
 [profile.release]
 codegen-units = 1 # LLVM can perform better optimizations using a single thread
-debug = 2
+debug = true
 debug-assertions = false
 incremental = false
 #lto = 'fat'
