@@ -6,12 +6,12 @@ use tokio::net::TcpStream;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
 use crate::structs::{ClientToProxy, ClientToProxyTx, ProxyToClientRx, ProxyToClientTx};
-use shared::socket_packet::SocketPacket;
+use shared::socket_packet::{ClientID, SocketPacket};
 
 pub type Tx = UnboundedSender<Option<SocketPacket>>;
 pub struct ClientConnection {
     mc_server: String,
-    client_id: u16,
+    client_id: ClientID,
     client_rx: ProxyToClientRx,
     proxy_tx: ClientToProxyTx,
     pub need_for_close: bool,
@@ -21,7 +21,7 @@ impl ClientConnection {
     pub async fn new(
         proxy_tx: ClientToProxyTx,
         mc_server: String,
-        client_id: u16,
+        client_id: ClientID,
     ) -> (Self, ProxyToClientTx) {
         let (client_tx, client_rx) = unbounded_channel();
         (

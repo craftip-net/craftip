@@ -1,5 +1,6 @@
 use crate::crypto::{ChallengeDataType, ServerPublicKey, SignatureDataType};
 use crate::minecraft::MinecraftDataPacket;
+use crate::socket_packet::ClientID;
 use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
 
@@ -50,12 +51,12 @@ pub struct ProxyClientDisconnectPacket {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct ProxyDataPacket {
-    pub client_id: u16,
+    pub client_id: usize,
     pub data: MinecraftDataPacket,
 }
 
 impl ProxyDataPacket {
-    pub fn new(data: MinecraftDataPacket, client_id: u16) -> Self {
+    pub fn new(data: MinecraftDataPacket, client_id: ClientID) -> Self {
         Self { client_id, data }
     }
 }

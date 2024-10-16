@@ -1,5 +1,4 @@
 use std::mem::size_of;
-use std::net::SocketAddr;
 use std::ops::{BitAnd, BitOr, Not};
 
 use crate::config::MAXIMUM_PACKET_SIZE;
@@ -8,13 +7,14 @@ use bytes::{Buf, BufMut, BytesMut};
 use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
 use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::oneshot;
 
 use crate::datatypes::PacketError;
 use crate::minecraft::MinecraftDataPacket;
 use crate::proxy::{ProxyConnectedResponse, ProxyDataPacket, ProxyHelloPacket};
 
 pub type PingPacket = u16;
-pub type ClientID = u16;
+pub type ClientID = usize;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub enum SocketPacket {
@@ -65,7 +65,8 @@ impl SocketPacket {
             buf.reserve(length + size_of::<u16>());
             let start = (length as u16).bitor(1u16 << 15);
             buf.put_u16(start);
-            buf.put_u16(data.client_id);
+            // todo maybe error handling?
+            buf.put_u16(data.client_id as u16);
             buf.put(data.data.as_ref());
             return Ok(());
         }
@@ -106,7 +107,7 @@ impl SocketPacket {
             let data_len = length - size_of::<u16>();
             let data = buf.split_to(data_len);
             return Ok(Some(SocketPacket::ProxyData(ProxyDataPacket {
-                client_id,
+                client_id: client_id as usize,
                 data: MinecraftDataPacket(data.freeze()),
             })));
         }
@@ -122,9 +123,12 @@ impl SocketPacket {
 /// or Close to close the socket
 #[derive(Debug)]
 pub enum ClientToProxy {
-    Packet(SocketAddr, MinecraftDataPacket),
-    AddMinecraftClient(SocketAddr, UnboundedSender<MinecraftDataPacket>),
-    RemoveMinecraftClient(SocketAddr),
+    Packet(ClientID, MinecraftDataPacket),
+    AddMinecraftClient(
+        oneshot::Sender<ClientID>,
+        UnboundedSender<MinecraftDataPacket>,
+    ),
+    RemoveMinecraftClient(ClientID),
 }
 
 #[cfg(test)]

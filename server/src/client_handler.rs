@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{bail, Context};
 use bytes::{BufMut, BytesMut};
 use std::io;
 use std::net::SocketAddr;
@@ -6,14 +6,14 @@ use std::net::SocketAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::net::TcpStream;
-use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
 
 use shared::addressing::{DistributorError, Tx};
 use shared::distributor_error;
 use shared::minecraft::{MinecraftDataPacket, MinecraftHelloPacket};
-use shared::socket_packet::ClientToProxy;
+use shared::socket_packet::{ClientID, ClientToProxy};
 
 #[derive(Debug)]
 pub struct MCClient {
@@ -22,6 +22,7 @@ pub struct MCClient {
     addr: SocketAddr,
     proxy_tx: Tx,
     need_for_close: bool,
+    id: ClientID,
     hostname: String,
     connection_time: Instant,
 }
@@ -42,11 +43,18 @@ impl MCClient {
         let (tx, rx) = mpsc::unbounded_channel();
         tracing::info!("Minecraft client {} connected to {}", addr, hostname);
 
+        let (id_tx, id_rx) = oneshot::channel();
         proxy_tx
-            .send(ClientToProxy::AddMinecraftClient(addr, tx))
+            .send(ClientToProxy::AddMinecraftClient(id_tx, tx))
             .context("Send failed")?;
+
+        let id = match id_rx.await {
+            Ok(id) => id,
+            Err(e) => bail!("Could not get ID for Minecraft client {e}"),
+        };
+
         proxy_tx
-            .send(ClientToProxy::Packet(addr, start_data))
+            .send(ClientToProxy::Packet(id, start_data))
             .context("Send failed")?;
 
         Ok(MCClient {
@@ -55,6 +63,7 @@ impl MCClient {
             proxy_tx,
             addr,
             need_for_close: true,
+            id,
             hostname,
             connection_time: Instant::now(),
         })
@@ -62,7 +71,7 @@ impl MCClient {
     async fn client_reader(
         mut reader: OwnedReadHalf,
         proxy_tx: UnboundedSender<ClientToProxy>,
-        addr: SocketAddr,
+        id: ClientID,
     ) {
         let mut buf = BytesMut::new();
         loop {
@@ -71,7 +80,7 @@ impl MCClient {
                 Ok(0) => break,
                 Ok(_len) => {
                     let packet = MinecraftDataPacket::from(buf.split().freeze());
-                    if let Err(e) = proxy_tx.send(ClientToProxy::Packet(addr, packet)) {
+                    if let Err(e) = proxy_tx.send(ClientToProxy::Packet(id, packet)) {
                         tracing::error!("could not send to proxy distributor: {}", e);
                         break;
                     }
@@ -89,11 +98,7 @@ impl MCClient {
         let socket = self.socket.take().unwrap();
         let (reader, mut writer) = socket.into_split();
         // read part of socke
-        let mut reader = tokio::spawn(Self::client_reader(
-            reader,
-            self.proxy_tx.clone(),
-            self.addr,
-        ));
+        let mut reader = tokio::spawn(Self::client_reader(reader, self.proxy_tx.clone(), self.id));
 
         loop {
             tokio::select! {
@@ -141,7 +146,7 @@ impl Drop for MCClient {
         if self.need_for_close {
             let _ = self
                 .proxy_tx
-                .send(ClientToProxy::RemoveMinecraftClient(self.addr));
+                .send(ClientToProxy::RemoveMinecraftClient(self.id));
         }
     }
 }

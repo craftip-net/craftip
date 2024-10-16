@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use shared::crypto::ServerPrivateKey;
 use shared::minecraft::MinecraftDataPacket;
 use shared::packet_codec::PacketCodecError;
+use shared::socket_packet::ClientID;
 use std::io;
 use thiserror::Error;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
@@ -41,8 +42,8 @@ pub enum ClientError {
 }
 
 pub enum ClientToProxy {
-    Packet(u16, MinecraftDataPacket),
-    RemoveMinecraftClient(u16),
+    Packet(ClientID, MinecraftDataPacket),
+    RemoveMinecraftClient(ClientID),
     Death(String),
 }
 pub type ClientToProxyRx = UnboundedReceiver<ClientToProxy>;

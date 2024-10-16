@@ -16,7 +16,7 @@ use tokio_util::codec::Framed;
 use shared::config::{PROTOCOL_VERSION, PROXY_IDENTIFIER, TIMEOUT_IN_SEC};
 use shared::packet_codec::PacketCodec;
 use shared::proxy::{ProxyAuthenticator, ProxyDataPacket, ProxyHelloPacket};
-use shared::socket_packet::SocketPacket;
+use shared::socket_packet::{ClientID, SocketPacket};
 
 use crate::connection_handler::ClientConnection;
 use crate::structs::{
@@ -25,28 +25,28 @@ use crate::structs::{
 };
 
 pub struct Client {
-    connections: HashMap<u16, ProxyToClientTx>,
+    connections: HashMap<ClientID, ProxyToClientTx>,
     stats_tx: Option<StatsTx>,
     proxy: Option<Framed<TcpStream, PacketCodec>>,
     server: Server,
 }
 
 impl Client {
-    fn add_connection(&mut self, id: u16, tx: ProxyToClientTx) {
+    fn add_connection(&mut self, id: ClientID, tx: ProxyToClientTx) {
         self.connections.insert(id, tx);
         if let Some(tx) = &self.stats_tx {
             tx.send(Stats::ClientsConnected(self.connections.len() as u16))
                 .unwrap();
         }
     }
-    pub fn remove_connection(&mut self, id: u16) {
+    pub fn remove_connection(&mut self, id: ClientID) {
         self.connections.remove(&id);
         if let Some(tx) = &self.stats_tx {
             tx.send(Stats::ClientsConnected(self.connections.len() as u16))
                 .unwrap();
         }
     }
-    pub fn send_to(&mut self, id: u16, msg: ProxyToClient) -> Result<()> {
+    pub fn send_to(&mut self, id: ClientID, msg: ProxyToClient) -> Result<()> {
         let channel = self
             .connections
             .get_mut(&id)

@@ -13,14 +13,13 @@ use tokio::time::{Duration, Instant};
 use tokio_util::codec::Framed;
 
 use shared::addressing::{DistributorError, Register};
-use shared::config;
-use shared::config::{PROTOCOL_VERSION, TIMEOUT_IN_SEC};
+use shared::config::{MAXIMUM_CLIENTS, PROTOCOL_VERSION, TIMEOUT_IN_SEC};
 use shared::minecraft::MinecraftDataPacket;
 use shared::packet_codec::PacketCodec;
 use shared::proxy::{
     ProxyAuthenticator, ProxyConnectedResponse, ProxyDataPacket, ProxyHelloPacket,
 };
-use shared::socket_packet::{ClientToProxy, SocketPacket};
+use shared::socket_packet::{ClientID, ClientToProxy, SocketPacket};
 
 #[derive(Debug, Clone)]
 pub struct MinecraftClient {
@@ -28,51 +27,52 @@ pub struct MinecraftClient {
     id: u16,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Distribiutor {
     clients_addr: HashMap<SocketAddr, MinecraftClient>,
-    clients_id: HashMap<u16, SocketAddr>,
+    clients_id: [Option<UnboundedSender<MinecraftDataPacket>>; MAXIMUM_CLIENTS],
 }
 
+impl Default for Distribiutor {
+    fn default() -> Self {
+        const CHANNEL_NONE: Option<UnboundedSender<MinecraftDataPacket>> = None;
+        Self {
+            clients_addr: Default::default(),
+            clients_id: [CHANNEL_NONE; MAXIMUM_CLIENTS],
+        }
+    }
+}
 impl Distribiutor {
     fn insert(
         &mut self,
-        addr: SocketAddr,
         tx: UnboundedSender<MinecraftDataPacket>,
-    ) -> Result<MinecraftClient, DistributorError> {
-        let mut id = None;
-        for id_found in 0..=config::MAXIMUM_CLIENTS {
-            if !self.clients_id.contains_key(&id_found) {
-                id = Some(id_found);
-                break;
+    ) -> Result<ClientID, DistributorError> {
+        for (id, element) in self.clients_id.iter_mut().enumerate() {
+            if element.is_none() {
+                *element = Some(tx);
+                return Ok(id);
             }
         }
-        let id = id.ok_or(DistributorError::TooManyClients)?;
-        self.clients_id.insert(id, addr);
-        let client = MinecraftClient { id, tx };
-        self.clients_addr.insert(addr, client.clone());
-        Ok(client)
+        Err(DistributorError::TooManyClients)
     }
     fn remove_by_addr(&mut self, addr: &SocketAddr) {
         if let Some(client) = self.clients_addr.get(addr) {
-            self.clients_id.remove(&client.id);
+            *self
+                .clients_id
+                .get_mut(client.id as usize)
+                .expect("Something went wrong in the ID process") = None
         }
         self.clients_addr.remove(addr);
     }
-    fn remove_by_id(&mut self, id: u16) {
-        if let Some(addr) = self.clients_id.get(&id) {
-            self.clients_addr.remove(addr);
+    fn remove_by_id(&mut self, id: ClientID) {
+        if let Some(client) = self.clients_id.get_mut(id) {
+            client.take();
         }
-        self.clients_id.remove(&id);
     }
-    fn get_by_addr(&self, addr: &SocketAddr) -> Option<&MinecraftClient> {
-        return self.clients_addr.get(addr);
-    }
-    fn get_by_id(&self, id: u16) -> Option<&MinecraftClient> {
-        return self
-            .clients_id
-            .get(&id)
-            .and_then(|addr| self.clients_addr.get(addr));
+
+    fn get_by_id(&self, id: ClientID) -> Option<&UnboundedSender<MinecraftDataPacket>> {
+        let sender = self.clients_id.get(id);
+        return sender.and_then(|inner| inner.as_ref());
     }
 }
 
@@ -121,20 +121,20 @@ impl ProxyClient {
                     };
                     'inner: loop {
                         let socket_packet = match result {
-                            ClientToProxy::AddMinecraftClient(addr, tx) => {
-                                let client = distributor.insert(addr, tx)?;
-                                SocketPacket::ProxyJoin(client.id)
+                            ClientToProxy::AddMinecraftClient(id_sender, tx) => {
+                                let client_id = distributor.insert(tx)?;
+                                id_sender.send(client_id).map_err(|_|DistributorError::UnknownError("Send impossible".into()))?;
+                                SocketPacket::ProxyJoin(client_id as ClientID)
                             },
-                            ClientToProxy::Packet(addr, pkg) => {
+                            ClientToProxy::Packet(id, pkg) => {
                                 // if client not found, close connection
-                                let client = distributor.get_by_addr(&addr).ok_or_else(||DistributorError::WrongPacket)?;
-                                SocketPacket::from(ProxyDataPacket::new(pkg, client.id))
+                                SocketPacket::from(ProxyDataPacket::new(pkg, id as ClientID))
                             },
-                            ClientToProxy::RemoveMinecraftClient(addr) => {
-                                if let Some(client) = distributor.get_by_addr(&addr) {
-                                    framed.send(SocketPacket::ProxyDisconnect(client.id)).await?;
+                            ClientToProxy::RemoveMinecraftClient(id) => {
+                                if let Some(client) = distributor.get_by_id(id) {
+                                    framed.send(SocketPacket::ProxyDisconnect(id)).await?;
                                 }
-                                distributor.remove_by_addr(&addr);
+                                distributor.remove_by_id(id);
                                 break 'inner;
                             }
                         };
@@ -159,8 +159,8 @@ impl ProxyClient {
                                     distributor.remove_by_id(client_id);
                                 }
                                 SocketPacket::ProxyData(packet) => {
-                                    if let Some(client) = distributor.get_by_id(packet.client_id) {
-                                        if let Err(e) = client.tx.send(packet.data) {
+                                    if let Some(tx) = distributor.get_by_id(packet.client_id) {
+                                        if let Err(e) = tx.send(packet.data) {
                                             tracing::error!("could not send to minecraft client: {}", e);
                                         }
                                     }
