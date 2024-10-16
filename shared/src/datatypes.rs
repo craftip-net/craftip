@@ -14,6 +14,8 @@ pub enum PacketError {
     NotMatching,
     #[error("There has been an error during encoding")]
     EncodingError,
+    #[error("Packet too long")]
+    TooLong,
 }
 
 pub fn get_varint(buf: &[u8], start: usize) -> Result<(i32, usize), PacketError> {
@@ -39,11 +41,4 @@ pub fn get_varint(buf: &[u8], start: usize) -> Result<(i32, usize), PacketError>
             return Ok((value, size));
         }
     }
-}
-
-#[derive(Debug, Clone)]
-pub enum Protocol {
-    Unknown,
-    MC(u32),
-    Proxy(u32),
 }

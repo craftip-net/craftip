@@ -22,11 +22,11 @@ macro_rules! distributor_error {
 pub enum DistributorError {
     #[error("ClientNotFound")]
     ClientNotFound,
-    #[error("Server Not found")]
+    #[error("Server \"{0}\" Not found")]
     ServerNotFound(String),
     #[error("ServerAlreadyConnected")]
     ServerAlreadyConnected,
-    #[error("ServerNotConnected")]
+    #[error("Server \"{0}\" not connected")]
     ServerNotConnected(String),
     #[error("Auth Error")]
     AuthError,
@@ -36,7 +36,7 @@ pub enum DistributorError {
     WrongPacket,
     #[error("TooManyClients")]
     TooManyClients,
-    #[error("UnknownError")]
+    #[error("Unknown Error: {0}")]
     UnknownError(String),
     #[error("IO Error")]
     IoError(#[from] std::io::Error),

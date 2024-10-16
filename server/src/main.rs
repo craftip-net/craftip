@@ -6,7 +6,7 @@ use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 
 use crate::process_socket::process_socket_connection;
-use shared::addressing::{DistributorError, Register};
+use shared::addressing::Register;
 
 mod client_handler;
 mod process_socket;
@@ -36,10 +36,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let register = Arc::clone(&register);
         tokio::spawn(async move {
             match process_socket_connection(socket, register).await {
-                Ok(_) => tracing::info!("client disconnected"),
-                Err(DistributorError::UnknownError(err)) => {
-                    tracing::error!("client error: {}", err)
-                }
+                Ok(_) => tracing::debug!("client disconnected"),
                 Err(e) => {
                     tracing::info!("client error: {:?}", e);
                 }

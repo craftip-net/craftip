@@ -1,8 +1,7 @@
 use crate::crypto::{ChallengeDataType, ServerPublicKey, SignatureDataType};
+use crate::minecraft::MinecraftDataPacket;
 use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
-
-use crate::minecraft::{MinecraftDataPacket, MinecraftHelloPacket};
 
 /// ProxyHelloPacket is the first packet sent by the client to the proxy.
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
@@ -52,32 +51,12 @@ pub struct ProxyClientDisconnectPacket {
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct ProxyDataPacket {
     pub client_id: u16,
-    pub packet: MinecraftDataPacket,
+    pub data: MinecraftDataPacket,
 }
 
 impl ProxyDataPacket {
-    pub fn new(packet: MinecraftDataPacket, client_id: u16) -> Self {
-        Self { client_id, packet }
-    }
-}
-
-impl ProxyDataPacket {
-    pub fn from_mc_hello_packet(packet: &MinecraftHelloPacket, client_id: u16) -> Self {
-        ProxyDataPacket {
-            client_id,
-            packet: MinecraftDataPacket {
-                data: packet.data.clone(),
-            },
-        }
-    }
-}
-
-impl From<MinecraftDataPacket> for ProxyDataPacket {
-    fn from(packet: MinecraftDataPacket) -> Self {
-        ProxyDataPacket {
-            client_id: 0,
-            packet,
-        }
+    pub fn new(data: MinecraftDataPacket, client_id: u16) -> Self {
+        Self { client_id, data }
     }
 }
 

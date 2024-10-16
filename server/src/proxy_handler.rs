@@ -81,6 +81,7 @@ pub struct ProxyClient {
     register: Arc<Mutex<Register>>,
     hostname: String,
     rx: Option<UnboundedReceiver<ClientToProxy>>,
+    connected_time: Option<Instant>,
 }
 
 impl ProxyClient {
@@ -89,6 +90,7 @@ impl ProxyClient {
             register,
             hostname: hostname.to_string(),
             rx: None,
+            connected_time: None,
         }
     }
     /// HANDLE PROXY CLIENT
@@ -104,6 +106,7 @@ impl ProxyClient {
             version: PROTOCOL_VERSION,
         });
         framed.send(resp).await?;
+        self.connected_time = Some(Instant::now());
         let mut last_packet_recv = Instant::now();
         loop {
             tokio::select! {
@@ -140,7 +143,7 @@ impl ProxyClient {
                             result = pkg_next;
                         } else {
                             framed.send(socket_packet).await?;
-                            break;
+                            break 'inner;
                         }
                     }
                 }
@@ -157,8 +160,7 @@ impl ProxyClient {
                                 }
                                 SocketPacket::ProxyData(packet) => {
                                     if let Some(client) = distributor.get_by_id(packet.client_id) {
-                                        let mc_packet = MinecraftDataPacket::from(packet);
-                                        if let Err(e) = client.tx.send(mc_packet) {
+                                        if let Err(e) = client.tx.send(packet.data) {
                                             tracing::error!("could not send to minecraft client: {}", e);
                                         }
                                     }
@@ -167,12 +169,13 @@ impl ProxyClient {
                                     framed.send(SocketPacket::ProxyPong(packet)).await?
                                 }
                                 packet => {
-                                    tracing::info!("Received proxy packet: {:?}", packet);
+                                    tracing::info!("Received unexpected proxy packet: {:?}", packet);
                                 }
                             }
                         }
+                        None => break,
                         // either the channel was closed or the other side closed the channel or timeout
-                        e => {
+                        Some(Err(e)) => {
                             tracing::info!("Connection will be closed due to {:?}", e);
                             break
                         }
@@ -200,7 +203,11 @@ impl ProxyClient {
         Ok(())
     }
     pub async fn close_connection(&mut self) {
-        tracing::info!("removing proxy client {} from state", self.hostname);
+        tracing::info!(
+            "removing proxy client {} from state. Connection time: {:?}",
+            self.hostname,
+            self.connected_time.map(|t| t.elapsed())
+        );
         self.register.lock().await.servers.remove(&self.hostname);
     }
     pub async fn authenticate(
