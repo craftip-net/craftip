@@ -3,16 +3,14 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::task::JoinHandle;
-use tokio::time::{sleep, timeout};
+use tokio::time::{sleep, timeout, Instant};
 
 use crate::gui_channel::GuiTriggeredEvent;
 use crate::gui_channel::ServerState;
 use crate::{GuiState, UpdateState};
 use client::client::Client;
+use client::structs::ClientError;
 use client::structs::Stats;
-use client::structs::{ClientError, ControlTx};
-use shared::config::TIMEOUT_IN_SEC;
-
 pub struct Controller {
     pub gui_rx: UnboundedReceiver<GuiTriggeredEvent>,
     pub updater_rx: UnboundedReceiver<UpdateState>,
@@ -94,13 +92,16 @@ impl Controller {
 
 async fn connection_loop(mut client: Client, state: Arc<Mutex<GuiState>>) {
     let mut connection_attempt = 0;
+    let mut last_connection_attempt = Duration::MAX;
     loop {
-        if connection_attempt != 0 {
-            sleep(Duration::from_secs(5)).await;
-        }
-        let connection_result = timeout(Duration::from_secs(TIMEOUT_IN_SEC), client.connect())
+        sleep(Duration::from_secs(5).saturating_sub(last_connection_attempt)).await;
+
+        let start = Instant::now();
+        let connection_result = timeout(Duration::from_secs(5), client.connect())
             .await
             .unwrap_or_else(|_| Err(ClientError::Timeout));
+        last_connection_attempt = start.elapsed();
+
         state
             .lock()
             .unwrap()
@@ -112,10 +113,11 @@ async fn connection_loop(mut client: Client, state: Arc<Mutex<GuiState>>) {
                 Err(e) => {
                     s.error = Some(format!("Error connecting: {}", e));
                     s.state = ServerState::Connecting(connection_attempt);
-                    tracing::error!("Error connecting: {}", e);
+                    tracing::error!("Error connecting: {} {}", e, connection_attempt);
                 }
             })
             .unwrap();
+
         if connection_result.is_err() {
             connection_attempt += 1;
             continue;
@@ -123,6 +125,7 @@ async fn connection_loop(mut client: Client, state: Arc<Mutex<GuiState>>) {
 
         // handle connection if connection was successful
         connection_attempt = 0;
+        last_connection_attempt = Duration::MAX;
         match client.handle().await {
             Ok(()) => return,
             Err(err) => {
@@ -130,7 +133,10 @@ async fn connection_loop(mut client: Client, state: Arc<Mutex<GuiState>>) {
                 state
                     .lock()
                     .unwrap()
-                    .set_active_server(|s| s.error = Some(format!("Connection error: {}", err)))
+                    .set_active_server(|s| {
+                        s.error = Some(format!("Connection error: {}", err));
+                        s.state = ServerState::Connecting(connection_attempt);
+                    })
                     .expect("Could not find active server")
             }
         }

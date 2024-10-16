@@ -192,7 +192,7 @@ impl Client {
                                         stats.send(Stats::Ping(ping))?;
                                     }
                                 }
-                                _ => unimplemented!("Message not implemented!")
+                                e => bail!("Unexpected message {:?}", e)
                             }
                         }
                         // An error occurred.

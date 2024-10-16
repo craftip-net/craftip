@@ -45,7 +45,7 @@ pub async fn main() -> Result<()> {
 
     // handle handle connection if connection was successful
     tracing::info!("Handling connection...");
-    let _result = client.handle().await.unwrap();
+    client.handle().await.unwrap();
 
     Ok(())
 }

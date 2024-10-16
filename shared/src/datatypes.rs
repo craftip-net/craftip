@@ -42,10 +42,3 @@ pub fn get_varint(buf: &[u8], start: usize) -> Result<(i32, usize), PacketError>
         }
     }
 }
-
-#[derive(Debug, Clone)]
-pub enum Protocol {
-    Unknown,
-    MC(u32),
-    Proxy(u32),
-}

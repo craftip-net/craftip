@@ -1,5 +1,4 @@
 use crate::datatypes::PacketError;
-use crate::datatypes::Protocol;
 use crate::socket_packet::SocketPacket;
 use bytes::{BufMut, Bytes, BytesMut};
 use std::io;
@@ -22,10 +21,7 @@ pub enum PacketCodecError {
 impl PacketCodec {
     /// Returns a `PacketCodec` for splitting up data into packets.
     pub fn new(max_length: usize) -> PacketCodec {
-        PacketCodec {
-            max_length,
-            protocol: Protocol::Unknown,
-        }
+        PacketCodec { max_length }
     }
 }
 
@@ -41,10 +37,9 @@ impl From<PacketError> for PacketCodecError {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct PacketCodec {
     max_length: usize,
-    protocol: Protocol,
 }
 
 impl Decoder for PacketCodec {

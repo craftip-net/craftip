@@ -129,16 +129,17 @@ pub enum ClientToProxy {
 
 #[cfg(test)]
 mod tests {
+    use crate::minecraft::MinecraftDataPacket;
     use crate::proxy::ProxyDataPacket;
     use crate::socket_packet::SocketPacket;
-    use bytes::BytesMut;
+    use bytes::{Bytes, BytesMut};
 
     fn create_packets() -> Vec<SocketPacket> {
         let ping = SocketPacket::ProxyPing(1);
         let err = SocketPacket::ProxyError("hi".into());
         let data = SocketPacket::ProxyData(ProxyDataPacket {
             client_id: 0x1234,
-            data: vec![9, 10, 11, 12, 13],
+            data: MinecraftDataPacket::from(Bytes::from("12345")),
         });
         return vec![ping, data, err];
     }

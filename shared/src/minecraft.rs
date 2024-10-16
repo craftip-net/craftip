@@ -43,22 +43,24 @@ impl AsRef<[u8]> for MinecraftDataPacket {
         self.0.as_ref()
     }
 }
-// todo
 impl<'de> Deserialize<'de> for MinecraftDataPacket {
-    fn deserialize<D>(_deserializer: D) -> Result<MinecraftDataPacket, D::Error>
+    fn deserialize<D>(deserializer: D) -> Result<MinecraftDataPacket, D::Error>
     where
         D: Deserializer<'de>,
     {
-        unimplemented!("This should never be called. It should be explicitly converted!")
+        tracing::error!("should not use deserialize of MinecraftDataPacket");
+        let vec = Vec::<u8>::deserialize(deserializer)?;
+        Ok(MinecraftDataPacket(Bytes::from(vec)))
     }
 }
 // todo
 impl<'de> Serialize for MinecraftDataPacket {
-    fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        unimplemented!("This should never be called. It should be explicitly converted!")
+        tracing::error!("should not use serialize of MinecraftDataPacket");
+        serializer.serialize_bytes(&self.0)
     }
 }
 
@@ -165,5 +167,21 @@ impl MinecraftHelloPacket {
             version,
             hostname,
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::minecraft::MinecraftDataPacket;
+    use bytes::Bytes;
+
+    #[test]
+
+    fn test_serialization() {
+        let reference = "Hello world";
+        let pkg = MinecraftDataPacket::from(Bytes::from(reference));
+        let serial = bincode::serialize(&pkg).unwrap();
+        let deserialized_pkg = bincode::deserialize::<MinecraftDataPacket>(&serial).unwrap();
+        assert_eq!(pkg, deserialized_pkg);
     }
 }
