@@ -43,7 +43,7 @@ impl ClientConnection {
             .context(format!("could not connect to {}", &self.mc_server))?;
         mc_server.set_nodelay(true)?;
         loop {
-            let mut buf = BytesMut::new();
+            let mut buf = BytesMut::with_capacity(2048);
             tokio::select! {
                 pkg = self.client_rx.recv() => {
                     //tracing::info!("Sending packet to client: {:?}", pkg);
@@ -74,7 +74,7 @@ impl ClientConnection {
                     }
                     tracing::debug!("recv pkg from mc srv len: {}", n);
                     // encapsulate in ProxyDataPacket
-                    let packet = MinecraftDataPacket::from(buf.split().freeze());
+                    let packet = MinecraftDataPacket::from(buf.freeze());
                     let packet = ClientToProxy::Packet(self.client_id,  packet);
 
                     if let Err(e) = self.proxy_tx.send(packet) {

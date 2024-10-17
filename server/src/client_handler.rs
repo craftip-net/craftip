@@ -73,13 +73,13 @@ impl MCClient {
         proxy_tx: UnboundedSender<ClientToProxy>,
         id: ClientID,
     ) {
-        let mut buf = BytesMut::new();
         loop {
+            let mut buf = BytesMut::with_capacity(2048);
             match reader.read_buf(&mut buf).await {
                 // The stream has been exhausted.
                 Ok(0) => break,
                 Ok(_len) => {
-                    let packet = MinecraftDataPacket::from(buf.split().freeze());
+                    let packet = MinecraftDataPacket::from(buf.freeze());
                     if let Err(e) = proxy_tx.send(ClientToProxy::Packet(id, packet)) {
                         tracing::error!("could not send to proxy distributor: {}", e);
                         break;
