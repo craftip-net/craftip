@@ -20,7 +20,7 @@ impl CustomCursorMethods for CustomCursor {
     }
     /// get the varint form buffer and advance cursor
     fn get_varint(&mut self) -> Result<i32, PacketError> {
-        let (value, size) = get_varint(self.get_ref(), self.position() as usize)?;
+        let (value, size) = get_varint(&self.get_ref()[self.position() as usize..])?;
         self.set_position(self.position() + size as u64);
         Ok(value)
     }

@@ -54,7 +54,7 @@ impl<'de> Deserialize<'de> for MinecraftDataPacket {
     }
 }
 // todo
-impl<'de> Serialize for MinecraftDataPacket {
+impl Serialize for MinecraftDataPacket {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
