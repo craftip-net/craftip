@@ -10,7 +10,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 #[derive(Debug)]
 pub enum Stats {
     Connected,
-    ClientsConnected(u16),
+    ClientsConnected(usize),
     Ping(u16),
 }
 

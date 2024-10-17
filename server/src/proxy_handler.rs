@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-use std::net::SocketAddr;
 use std::ops::Add;
 use std::sync::Arc;
 
@@ -21,15 +19,8 @@ use shared::proxy::{
 };
 use shared::socket_packet::{ClientID, ClientToProxy, SocketPacket};
 
-#[derive(Debug, Clone)]
-pub struct MinecraftClient {
-    tx: UnboundedSender<MinecraftDataPacket>,
-    id: u16,
-}
-
 #[derive(Debug)]
 pub struct Distribiutor {
-    clients_addr: HashMap<SocketAddr, MinecraftClient>,
     clients_id: [Option<UnboundedSender<MinecraftDataPacket>>; MAXIMUM_CLIENTS],
 }
 
@@ -37,7 +28,6 @@ impl Default for Distribiutor {
     fn default() -> Self {
         const CHANNEL_NONE: Option<UnboundedSender<MinecraftDataPacket>> = None;
         Self {
-            clients_addr: Default::default(),
             clients_id: [CHANNEL_NONE; MAXIMUM_CLIENTS],
         }
     }
@@ -54,15 +44,6 @@ impl Distribiutor {
             }
         }
         Err(DistributorError::TooManyClients)
-    }
-    fn remove_by_addr(&mut self, addr: &SocketAddr) {
-        if let Some(client) = self.clients_addr.get(addr) {
-            *self
-                .clients_id
-                .get_mut(client.id as usize)
-                .expect("Something went wrong in the ID process") = None
-        }
-        self.clients_addr.remove(addr);
     }
     fn remove_by_id(&mut self, id: ClientID) {
         if let Some(client) = self.clients_id.get_mut(id) {
@@ -131,9 +112,7 @@ impl ProxyClient {
                                 SocketPacket::from(ProxyDataPacket::new(pkg, id as ClientID))
                             },
                             ClientToProxy::RemoveMinecraftClient(id) => {
-                                if let Some(client) = distributor.get_by_id(id) {
-                                    framed.send(SocketPacket::ProxyDisconnect(id)).await?;
-                                }
+                                framed.send(SocketPacket::ProxyDisconnect(id)).await?;
                                 distributor.remove_by_id(id);
                                 break 'inner;
                             }
