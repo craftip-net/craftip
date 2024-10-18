@@ -128,7 +128,7 @@ pub(crate) async fn first_minecraft_packet(
     buf.put(first_buf);
     socket.try_read_buf(&mut buf)?;
     loop {
-        if let Ok(packet) = MinecraftHelloPacket::new(&mut buf.clone()) {
+        if let Ok(Some(packet)) = MinecraftHelloPacket::new(&mut buf.clone()) {
             break Ok((packet, MinecraftDataPacket::from(buf.freeze())));
         }
         socket.read_buf(&mut buf).await?;

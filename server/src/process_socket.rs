@@ -1,4 +1,5 @@
 use crate::client_handler::{first_minecraft_packet, MCClient};
+use crate::disconnect_client::handle_mc_disconnect;
 use crate::proxy_handler::ProxyClient;
 use anyhow::{Context, Result};
 use futures::SinkExt;
@@ -42,6 +43,15 @@ pub async fn process_socket_connection(
             };
 
         let proxy_tx = register.lock().await.servers.get(&packet.hostname).cloned();
+        if proxy_tx.is_none() {
+            // if there is no proxy connected for the corresponding server
+            let _ = tokio::time::timeout(
+                Duration::from_secs(TIMEOUT_IN_SEC),
+                handle_mc_disconnect(packet, packet_data, socket),
+            )
+            .await;
+            return Ok(());
+        }
         let proxy_tx = proxy_tx.ok_or(DistributorError::ServerNotFound(packet.hostname.clone()))?;
 
         let mut client = MCClient::new(proxy_tx.clone(), socket, packet, packet_data).await?;
@@ -56,13 +66,16 @@ pub async fn process_socket_connection(
             .map_err(Into::into);
     }
 
+    let proxy_client_version = timeout(socket.read_u16()).await?;
+
     let mut frames = Framed::new(socket, PacketCodec::new(1024 * 8));
     // In a loop, read data from the socket and write the data back.
 
     let hello_packet = match frames.next().await {
         Some(Ok(SocketPacket::ProxyHello(packet))) => {
             tracing::info!(
-                "Proxy client connected for {} from {:?}",
+                "Proxy client v{} connected for {} from {:?}",
+                proxy_client_version,
                 packet.hostname,
                 frames.get_ref().peer_addr()
             );

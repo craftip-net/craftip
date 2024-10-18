@@ -207,9 +207,9 @@ mod tests {
                         parsed_packets.push(packet.clone());
                     }
                     Ok(None) => {
-                        let amout_that_should_be_parsed =
+                        let amount_that_should_be_parsed =
                             packet_indices.iter().filter(|e| e <= &&i).count();
-                        assert_eq!(packets[..amout_that_should_be_parsed], parsed_packets[..]);
+                        assert_eq!(packets[..amount_that_should_be_parsed], parsed_packets[..]);
                         break 'inner;
                     }
                     Err(e) => panic!("{}", e),
