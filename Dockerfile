@@ -8,6 +8,8 @@ RUN chown -R craftip:craftip /craftip
 USER craftip
 # caching dependencies, let build fail on purpose
 COPY Cargo.toml .
+COPY Cargo.lock .
+COPY build/ ./build
 COPY shared/ ./shared/
 COPY server/ ./server/
 COPY client/ ./client/
