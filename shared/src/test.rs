@@ -1,9 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use tokio_util::bytes::{BufMut, BytesMut};
+    use crate::cursor::{CustomCursor, CustomCursorRead, CustomCursorWrite};
+    use std::ops::Deref;
+    use tokio_util::bytes::{Buf, BufMut, BytesMut};
 
-    use crate::datatypes::get_varint;
-    use crate::minecraft::MinecraftHelloPacket;
+    use crate::minecraft::{MinecraftHelloPacket, MinecraftHelloPacketType};
 
     struct TestHelloPacket {
         name: String,
@@ -22,6 +23,7 @@ mod tests {
             TestHelloPacket {
                 name: "ping with long hostname".to_string(),
                 packet: MinecraftHelloPacket {
+                    pkg_type: MinecraftHelloPacketType::Legacy,
                     length: 162,
                     id: 0,
                     version: 73,
@@ -44,6 +46,7 @@ mod tests {
             TestHelloPacket {
                 name: "ping with short hostname".to_string(),
                 packet: MinecraftHelloPacket {
+                    pkg_type: MinecraftHelloPacketType::Legacy,
                     length: 40,
                     id: 0,
                     version: 73,
@@ -58,6 +61,7 @@ mod tests {
             TestHelloPacket {
                 name: "connect with long hostname".to_string(),
                 packet: MinecraftHelloPacket {
+                    pkg_type: MinecraftHelloPacketType::Legacy,
                     length: 158,
                     id: 0,
                     version: 73,
@@ -80,6 +84,7 @@ mod tests {
             TestHelloPacket {
                 name: "connect with short hostname".to_string(),
                 packet: MinecraftHelloPacket {
+                    pkg_type: MinecraftHelloPacketType::Legacy,
                     length: 50,
                     id: 0,
                     version: 73,
@@ -95,6 +100,7 @@ mod tests {
             TestHelloPacket {
                 name: "connect with too long buffer".to_string(),
                 packet: MinecraftHelloPacket {
+                    pkg_type: MinecraftHelloPacketType::Legacy,
                     length: 50,
                     id: 0,
                     version: 73,
@@ -110,25 +116,57 @@ mod tests {
             TestHelloPacket {
                 name: "connect with new server".to_string(),
                 packet: MinecraftHelloPacket {
-                    length: 16,
+                    pkg_type: MinecraftHelloPacketType::Connect,
+                    length: 17,
                     id: 0,
-                    version: 761,
+                    version: 767,
                     hostname: "localhost".parse().unwrap(),
+                    port: 25564,
+                },
+                data: Vec::from(
+                    b"\x10\x00\xff\x05\x09\x6c\x6f\x63\x61\x6c\x68\x6f\x73\x74\x63\xdc\x02",
+                ),
+            },
+            TestHelloPacket {
+                name: "Ping new server".to_string(),
+                packet: MinecraftHelloPacket {
+                    pkg_type: MinecraftHelloPacketType::Ping,
+                    length: 17,
+                    id: 0,
+                    version: 767,
+                    hostname: "localhost".parse().unwrap(),
+                    port: 25564,
+                },
+                data: Vec::from(
+                    b"\x10\x00\xff\x05\x09\x6c\x6f\x63\x61\x6c\x68\x6f\x73\x74\x63\xdc\x01",
+                ),
+            },
+            TestHelloPacket {
+                name: "".to_string(),
+                packet: MinecraftHelloPacket {
+                    length: 42,
+                    pkg_type: MinecraftHelloPacketType::Connect,
+                    id: 0,
+                    version: 767,
+                    hostname: "1234abcd001992312312.t.craftip.net".to_string(),
                     port: 25565,
                 },
-                data: vec![
-                    16, 0, 249, 5, 9, 108, 111, 99, 97, 108, 104, 111, 115, 116, 99, 221,
-                ],
+                data: Vec::from(b")\0\xff\x05\"1234abcd001992312312.t.craftip.netc\xdd\x02"),
             },
         ];
-        test_vector.iter().for_each(|test| {
+        for test in test_vector {
             println!("Testing {}...", test.name);
+            for len in 0..test.data.len() {
+                let mut buf = BytesMut::with_capacity(1024);
+                buf.put_slice(&test.data[..len]);
+                let packet = MinecraftHelloPacket::new(&mut buf).unwrap();
+                assert_eq!(packet, None);
+            }
             let mut buf = BytesMut::with_capacity(1024);
             buf.put_slice(&test.data);
             let packet = MinecraftHelloPacket::new(&mut buf).unwrap();
-
-            assert_eq!(packet, test.packet);
-        });
+            assert_eq!(packet, Some(test.packet.clone()));
+        }
     }
 
     #[test]
@@ -163,13 +201,60 @@ mod tests {
                 value: (-2147483648, 5),
             },
         ];
-        test_vector.iter().for_each(|test| {
-            println!("Testing {:?}...", test.value);
-            let value = get_varint(&*test.buffer.clone(), 0).unwrap();
-            assert_eq!(value, test.value);
-        });
+        for test in test_vector {
+            println!(
+                "Testing {:?} which should be {}...",
+                test.buffer, test.value.0
+            );
+            // test incomplete varints
+            for len in 0..test.buffer.len() {
+                let mut cursor = CustomCursor::new(&test.buffer[..len]);
+                let value = cursor.get_varint();
+                assert_eq!(
+                    value,
+                    Ok(None),
+                    "If packet is not complete, parser should return too small!"
+                );
+            }
+            // test complete varints
+            let mut cursor = CustomCursor::new(&test.buffer);
+            let res = cursor.get_varint().unwrap().unwrap();
+            assert_eq!(res, test.value.0);
+            assert_eq!(
+                cursor.remaining(),
+                0,
+                "Did not advance cursor sufficiently!"
+            );
+            let mut new_cursor = CustomCursor::new(Vec::new());
+            new_cursor.put_varint(test.value.0);
+            assert_eq!(new_cursor.get_ref().len() as usize, test.value.1);
+            assert_eq!(new_cursor.get_ref()[..], test.buffer[..]);
+        }
+    }
+    #[test]
+    fn test_all_numbers() {
+        let mut inner = vec![0; 32];
+        let mut cursor = CustomCursor::new(&mut inner);
+        for i in (i32::MIN..i32::MAX).step_by(1013) {
+            cursor.get_mut().clear();
+            cursor.put_varint(i);
+            cursor.set_position(0);
+            assert_eq!(cursor.get_varint(), Ok(Some(i)));
+        }
     }
 
+    #[test]
+    fn test_utf8_str() {
+        let test = vec![2, b'h', b'i'];
+        let mut cursor = CustomCursor::new(Vec::new());
+        cursor.put_utf8_string("hi");
+        assert_eq!(cursor.get_ref(), test.deref());
+        cursor.put_utf8_string("hi");
+        assert_eq!(
+            cursor.get_ref()[..],
+            [test.clone(), test.clone()].concat()[..]
+        );
+    }
     #[test]
     // should not panic!
     fn test_random_bytes() {

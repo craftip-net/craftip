@@ -9,6 +9,7 @@ use crate::process_socket::process_socket_connection;
 use shared::addressing::Register;
 
 mod client_handler;
+mod disconnect_client;
 mod process_socket;
 mod proxy_handler;
 

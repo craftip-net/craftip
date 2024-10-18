@@ -91,6 +91,9 @@ impl Client {
         proxy_stream.set_nodelay(true)?;
         // identifying as proxy
         proxy_stream.write_all(PROXY_IDENTIFIER.as_bytes()).await?;
+        // writing version
+        proxy_stream.write_u16(PROTOCOL_VERSION).await?;
+
         let mut proxy = Framed::new(proxy_stream, PacketCodec::new(1024 * 4));
 
         let hello = SocketPacket::from(ProxyHelloPacket {
@@ -213,7 +216,7 @@ impl Client {
                     }
                 },
                 // ensure constant traffic so tcp connection does not close
-                _ = sleep(Duration::from_secs(1)) => {
+                _ = sleep(Duration::from_secs(5)) => {
                     let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u16;
                     proxy.send(SocketPacket::ProxyPing(time)).await?;
                 }

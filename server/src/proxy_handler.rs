@@ -216,7 +216,7 @@ impl ProxyClient {
                 if public_key.verify(&challenge, &signature)
                     && public_key.get_hostname() == packet.hostname
                 {
-                    tracing::info!("Client {} authenticated successfully", packet.hostname);
+                    tracing::debug!("Client {} authenticated successfully", packet.hostname);
                     return Ok(());
                 }
             }
