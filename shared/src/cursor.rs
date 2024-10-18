@@ -1,6 +1,6 @@
 use crate::datatypes::PacketError;
 use crate::propagate;
-use std::io::{Cursor, Read};
+use std::io::Cursor;
 use std::mem::size_of;
 use std::ops::Not;
 use tokio_util::bytes::{Buf, BufMut};

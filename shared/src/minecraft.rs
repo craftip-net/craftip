@@ -1,4 +1,3 @@
-use std::io::Read;
 use std::mem;
 use std::mem::size_of;
 
@@ -302,7 +301,7 @@ impl MinecraftDataPacket {
 
 #[cfg(test)]
 mod test {
-    use crate::minecraft::{MinecraftDataPacket, MinecraftHelloPacket};
+    use crate::minecraft::MinecraftDataPacket;
     use tokio_util::bytes::Bytes;
 
     #[test]
