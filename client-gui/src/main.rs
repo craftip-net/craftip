@@ -207,9 +207,9 @@ impl eframe::App for MyApp {
                 if servers.is_empty() {
                     ui.label("No servers found");
                 }
-                if ui.button("+").clicked() {
+                /*if ui.button("+").clicked() {
                     println!("add button clicked");
-                }
+                }*/
             } else {
                 // still loading servers...
                 ui.spinner();
@@ -220,6 +220,7 @@ impl eframe::App for MyApp {
                     state.error = None;
                 }
             }
+            ui.label("If you are in a country far from Europe, you could experience high latency. We are working on this.")
         });
     }
     fn save(&mut self, storage: &mut dyn Storage) {
