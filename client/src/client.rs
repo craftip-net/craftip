@@ -9,7 +9,7 @@ use shared::addressing::DistributorError;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
-use tokio::time::{sleep, sleep_until, Instant};
+use tokio::time::{sleep, sleep_until, timeout, Instant};
 use tokio_stream::StreamExt;
 use tokio_util::codec::Framed;
 
@@ -83,9 +83,13 @@ impl Client {
 impl Client {
     pub async fn connect(&mut self) -> Result<(), ClientError> {
         // test connection to minecraft server
-        TcpStream::connect(&self.server.local)
-            .await
-            .map_err(|_| ClientError::MinecraftServerNotFound)?;
+        timeout(
+            Duration::from_secs(5),
+            TcpStream::connect(&self.server.local),
+        )
+        .await
+        .map_err(|_| ClientError::MinecraftServerNotFound)?
+        .map_err(|_| ClientError::MinecraftServerNotFound)?;
         // connect to proxy
         let mut proxy_stream = TcpStream::connect(format!("{}:25565", &self.server.server)).await?;
         proxy_stream.set_nodelay(true)?;
