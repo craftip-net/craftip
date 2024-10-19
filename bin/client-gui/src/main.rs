@@ -3,9 +3,7 @@ mod backend;
 mod config;
 mod gui_channel;
 mod help_popup;
-mod updater;
 mod updater_gui;
-mod updater_proto;
 
 use anyhow::{Context, Result};
 use std::sync::{Arc, Mutex};
@@ -18,9 +16,9 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::gui_channel::{GuiTriggeredChannel, GuiTriggeredEvent, ServerState};
 use crate::help_popup::HelpPopup;
-use crate::updater::UpdateInfo;
 use crate::updater_gui::{updater_gui_headline, updater_no_consent};
-use crate::updater_proto::UpdaterError;
+use updater::updater_proto::UpdaterError;
+use updater::updater::UpdateInfo;
 use client::structs::{Server, ServerAuthentication};
 use shared::crypto::ServerPrivateKey;
 
@@ -67,7 +65,7 @@ pub async fn main() -> Result<(), eframe::Error> {
 }
 
 fn build_icon() -> Option<Arc<IconData>> {
-    let icon = include_bytes!("../../build/resources/logo-mac.png");
+    let icon = include_bytes!("../../../build/resources/logo-mac.png");
     let image = image::load_from_memory(icon)
         .expect("Image could not be loaded from memory")
         .into_rgba8();

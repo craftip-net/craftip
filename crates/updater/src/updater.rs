@@ -48,9 +48,9 @@ pub struct Updater {
 impl Updater {
     pub fn new() -> Result<Option<Self>, UpdaterError> {
         //set_ssl_vars!();
-        let api_url = UPDATE_URL.to_string();
+        let api_url = UPDATE_URL;
 
-        let resp = ureq::get(&api_url).call()?;
+        let resp = ureq::get(api_url).call()?;
 
         println!("hello from the updater");
         let release = resp

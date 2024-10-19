@@ -1,10 +1,3 @@
-mod config;
-mod updater_proto;
-
-use crate::config::{DISTRIBUTION_PUBLIC_KEY, UPDATE_URL};
-use crate::updater_proto::{
-    decompress, get_bytes_for_signature, verify_signature, LatestRelease, Target, UpdaterError,
-};
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use clap::Parser;
@@ -17,6 +10,10 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime};
+use updater::config::{DISTRIBUTION_PUBLIC_KEY, UPDATE_URL};
+use updater::updater_proto::{
+    decompress, get_bytes_for_signature, verify_signature, LatestRelease, Target, UpdaterError,
+};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -139,16 +136,16 @@ fn verify_release_json(url: &str) {
     let release = ureq::get(url)
         .call()
         .unwrap()
-        .into_body()
-        .read_json::<LatestRelease>()
+        .into_json::<LatestRelease>()
         .unwrap();
     let temp_folder = tempfile::TempDir::new().unwrap();
     for target in release.targets {
-        let resp = ureq::get(&target.url)
+        let mut resp = Vec::new();
+        let _len = ureq::get(&target.url)
             .call()
             .unwrap()
-            .into_body()
-            .read_to_vec()
+            .into_reader()
+            .read_to_end(&mut resp)
             .unwrap();
 
         let archive = temp_folder.path().join(format!("{}.xz", target.target));
