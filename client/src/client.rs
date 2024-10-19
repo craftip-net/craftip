@@ -1,5 +1,5 @@
 use std::mem;
-use std::ops::Add;
+use std::ops::{Add, Sub};
 use std::time::Duration;
 use std::time::SystemTime;
 
@@ -149,6 +149,8 @@ impl Client {
         let (to_proxy_tx, mut to_proxy_rx) = mpsc::unbounded_channel();
         let mut proxy = mem::take(&mut self.proxy).unwrap();
         let mut last_packet_recv = Instant::now();
+        let mut last_ping_recv = Instant::now().sub(Duration::from_secs(10));
+        let start = Instant::now();
         loop {
             tokio::select! {
                 // send packets to proxy
@@ -204,7 +206,7 @@ impl Client {
                                     self.remove_connection(client_id);
                                 }
                                 SocketPacket::ProxyPong(ping) => {
-                                    let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u16;
+                                    let time = start.elapsed().as_millis() as u16;
                                     let ping = time.saturating_sub(ping);
                                     if let Some(stats) = &self.stats_tx {
                                         stats.send(Stats::Ping(ping))?;
@@ -220,8 +222,9 @@ impl Client {
                     }
                 },
                 // ensure constant traffic so tcp connection does not close
-                _ = sleep(Duration::from_secs(5)) => {
-                    let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u16;
+                _ = sleep_until(last_ping_recv.add(Duration::from_secs(5))) => {
+                    last_ping_recv = Instant::now();
+                    let time = start.elapsed().as_millis() as u16;
                     proxy.send(SocketPacket::ProxyPing(time)).await?;
                 }
                 // terminate socket if TIMEOUT_IN_SEC no packet was received

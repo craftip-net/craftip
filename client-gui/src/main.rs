@@ -246,6 +246,7 @@ struct ServerPanel {
     local: String,
     edit_local: Option<String>,
     state: ServerState,
+    ping: Option<u16>,
     error: Option<String>,
 }
 
@@ -259,6 +260,7 @@ impl From<&Server> for ServerPanel {
             local: server.local.clone(),
             error: None,
             edit_local: None,
+            ping: None,
         }
     }
 }
@@ -348,10 +350,16 @@ impl ServerPanel {
                             }
                             ServerState::Connected(connected) => {
                                 // leaf green color
-                                ui.label(
+                                let label = ui.label(
                                     RichText::new(format!("{} Clients", connected))
                                         .color(Color32::from_rgb(0, 204, 0)),
                                 );
+                                if let Some(ping) = self.ping {
+                                    label.on_hover_text(
+                                        RichText::new(format!("Ping {} ms", ping)),
+                                    );
+                                }
+                                
                                 ui.label("🔌");
                             }
                         }

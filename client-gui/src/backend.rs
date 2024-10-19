@@ -51,7 +51,11 @@ impl Controller {
                             }).unwrap();
                         }
                         Stats::Connected => {}
-                        Stats::Ping(_ping) => {}
+                        Stats::Ping(ping) => {
+                            self.state.lock().unwrap().set_active_server(|s| {
+                                s.ping = Some(ping);
+                            }).unwrap();
+                        }
                     }
                 }
                 event = self.updater_rx.recv() => {
@@ -83,7 +87,10 @@ impl Controller {
                             if let Some(control_tx) = connection_task.take() {
                                 control_tx.abort();
                             }
-                            self.state.lock().unwrap().set_active_server(|s|s.state = ServerState::Disconnected).unwrap()
+                            self.state.lock().unwrap().set_active_server(|s|{
+                                s.state = ServerState::Disconnected;
+                                s.ping = None;
+                            }).unwrap()
                         }
                     }
                 }
