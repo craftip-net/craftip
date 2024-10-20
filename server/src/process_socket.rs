@@ -1,5 +1,4 @@
-use crate::client_handler::{first_minecraft_packet, handle_minecraft_client, MCClient};
-use crate::disconnect_client::handle_mc_disconnect;
+use crate::client_handler::handle_minecraft_client;
 use crate::proxy_handler::ProxyClient;
 use anyhow::{Context, Result};
 use futures::SinkExt;
