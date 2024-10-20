@@ -21,7 +21,8 @@ jobs:
           run: |
            cd client-gui
            export COMPILE_VERSION_FILE=../target/version
-           cargo build --release --target=${{ matrix.arch }}-apple-darwin
+           cargo build --release --bin client-gui --target=${{ matrix.arch }}-apple-darwin
+           cargo test --release --all
         - name: Upload artifact
           uses: actions/upload-artifact@v4
           with:
@@ -33,16 +34,6 @@ jobs:
           with:
             name: version
             path: target/version
-        - name: Build bundler
-          shell: bash
-          run: |
-            cd build/bundle
-            cargo build --release --target=${{ matrix.arch }}-apple-darwin
-        - name: Upload bundler
-          uses: actions/upload-artifact@v4
-          with:
-            name: bundle_${{ matrix.arch }}-apple-darwin
-            path: target/${{ matrix.arch }}-apple-darwin/release/bundle
 
 
   windows:
@@ -54,6 +45,7 @@ jobs:
         run: |
           rustup target add x86_64-pc-windows-msvc
           cargo build --release --target x86_64-pc-windows-msvc
+          cargo test --release --all
 
       - uses: actions/upload-artifact@v4
         with:
