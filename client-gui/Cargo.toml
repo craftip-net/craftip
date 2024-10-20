@@ -22,13 +22,13 @@ tracing-subscriber = "0.3.18"
 
 # for linux support, check dependencies again
 eframe = { version = "0.25.0", default-features = false, features = ["persistence", "wgpu", "accesskit", "default_fonts"] }
-image = { version = "0.25.2", default-features = false, features = ["png"] }
+image = { version = "0.24", default-features = false, features = ["png"] }
 ehttp = { version = "0.5.0", features = ["json"] }
 poll-promise = "0.3.0"
 
-shared = { path = "../../crates/protocol" }
-client = { path = "../../crates/client" }
-updater = { path = "../../crates/updater" }
+shared = { path = "../crates/protocol" }
+client = { path = "../crates/client" }
+updater = { path = "../crates/updater" }
 
 
 tempfile = "3.9.0"

@@ -18,5 +18,5 @@ anyhow = { workspace = true }
 
 tracing-subscriber = { version = "0.3.18", default-features = false, features = ["fmt", "ansi", "env-filter", "tracing-log"] }
 
-shared = { path = "../../crates/protocol" }
+shared = { path = "../crates/protocol" }
 

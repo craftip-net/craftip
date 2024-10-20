@@ -65,7 +65,7 @@ pub async fn main() -> Result<(), eframe::Error> {
 }
 
 fn build_icon() -> Option<Arc<IconData>> {
-    let icon = include_bytes!("../../../build/resources/logo-mac.png");
+    let icon = include_bytes!("../../build/resources/logo-mac.png");
     let image = image::load_from_memory(icon)
         .expect("Image could not be loaded from memory")
         .into_rgba8();

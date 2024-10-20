@@ -4,9 +4,9 @@ members = [
     "crates/client",
     "crates/protocol",
     "crates/updater",
-    "bin/client-gui",
-    "bin/server",
-    "bin/update-tool",
+    "client-gui",
+    "server",
+    "util/update-tool",
 ]
 
 
