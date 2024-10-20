@@ -9,11 +9,11 @@ USER craftip
 # caching dependencies, let build fail on purpose
 COPY Cargo.toml .
 COPY Cargo.lock .
-COPY build/ ./build
-COPY shared/ ./shared/
+COPY crates/ ./crates/
 COPY server/ ./server/
-COPY client/ ./client/
 COPY client-gui/ ./client-gui/
+COPY util ./util
+
 WORKDIR /craftip/server
 RUN cargo build --release
 
