@@ -22,6 +22,8 @@ use updater::updater::UpdateInfo;
 use client::structs::{Server, ServerAuthentication};
 use shared::crypto::ServerPrivateKey;
 
+pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[derive(Debug)]
 pub enum UpdateState {
     CheckingForUpdate,

@@ -1,13 +1,13 @@
-use crate::UpdateState;
+use crate::{UpdateState, CURRENT_VERSION};
 use eframe::egui::{Button, Color32, RichText, Ui, Widget};
 use std::thread;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
-use updater::updater::{Updater, CURRENT_VERSION};
+use updater::updater::Updater;
 
 /// Returns false if update check failed
 pub(crate) fn updater_background_thread(updater_tx: UnboundedSender<UpdateState>) -> bool {
-    let updater = Updater::new();
+    let updater = Updater::new(CURRENT_VERSION);
     match updater {
         Ok(None) => {
             let _ = updater_tx.send(UpdateState::UpToDate);
@@ -39,7 +39,7 @@ pub(crate) fn updater_background_thread(updater_tx: UnboundedSender<UpdateState>
 }
 
 pub(crate) fn updater_no_consent(updater_tx: UnboundedSender<UpdateState>) {
-    thread::spawn(move || match Updater::new() {
+    thread::spawn(move || match Updater::new(CURRENT_VERSION) {
         Ok(None) => {
             let _ = updater_tx.send(UpdateState::UpToDate);
         }

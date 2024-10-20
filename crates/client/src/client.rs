@@ -1,6 +1,5 @@
 use std::mem;
 use std::ops::{Add, Sub};
-use std::time::Duration;
 
 use anyhow::{bail, Result};
 use futures::SinkExt;
@@ -8,8 +7,9 @@ use shared::addressing::DistributorError;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
-use tokio::time::{sleep_until, timeout, Instant};
+use tokio::time::{sleep_until, timeout, Duration, Instant};
 use tokio_stream::StreamExt;
+use tokio_util::bytes::{BufMut, BytesMut};
 use tokio_util::codec::Framed;
 
 use shared::config::{MAXIMUM_CLIENTS, PROTOCOL_VERSION, PROXY_IDENTIFIER, TIMEOUT_IN_SEC};
@@ -92,13 +92,22 @@ impl Client {
         // connect to proxy
         let mut proxy_stream = TcpStream::connect(format!("{}:25565", &self.server.server)).await?;
         proxy_stream.set_nodelay(true)?;
+
         // identifying as proxy
-        proxy_stream.write_all(PROXY_IDENTIFIER.as_bytes()).await?;
+        let mut buf = BytesMut::with_capacity(PROXY_IDENTIFIER.len() + size_of::<u16>());
+        buf.put_slice(PROXY_IDENTIFIER.as_bytes());
+        buf.put_u16(PROTOCOL_VERSION);
         // writing version
-        proxy_stream.write_u16(PROTOCOL_VERSION).await?;
+        proxy_stream.write_all(&buf).await?;
 
-        let mut proxy = Framed::new(proxy_stream, PacketCodec::new(1024 * 4));
+        let proxy = Framed::new(proxy_stream, PacketCodec::new(1024 * 4));
 
+        self.proxy = Some(proxy);
+        Ok(())
+    }
+
+    pub async fn auth(&mut self) -> Result<(), ClientError> {
+        let proxy = self.proxy.as_mut().unwrap();
         let hello = SocketPacket::from(ProxyHelloPacket {
             version: PROTOCOL_VERSION,
             hostname: self.server.server.clone(),
@@ -140,10 +149,34 @@ impl Client {
                 .send(Stats::Connected)
                 .map_err(|e| ClientError::Other(e.into()))?;
         }
-
-        self.proxy = Some(proxy);
         Ok(())
     }
+
+    pub async fn ping(&mut self) -> Result<u128, ClientError> {
+        let start = Instant::now();
+        let proxy = self.proxy.as_mut().unwrap();
+        let random = start.elapsed().as_nanos() as u16;
+        proxy.send(SocketPacket::ProxyPing(random)).await?;
+        let random_ret = match proxy.next().await {
+            Some(Ok(SocketPacket::ProxyPong(random))) => random,
+            other => {
+                return Err(ClientError::UnexpectedPacket(format!(
+                    "Waited for pong but got {:?}",
+                    other
+                )))
+            }
+        };
+
+        if random != random_ret {
+            return Err(ClientError::UnexpectedPacket(format!(
+                "Did not get same time back {} instead of {}",
+                random_ret, random
+            )));
+        }
+
+        Ok(start.elapsed().as_millis())
+    }
+
     pub async fn handle(&mut self) -> Result<()> {
         let (to_proxy_tx, mut to_proxy_rx) = mpsc::unbounded_channel();
         let mut proxy = mem::take(&mut self.proxy).unwrap();

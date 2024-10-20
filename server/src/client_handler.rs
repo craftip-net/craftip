@@ -1,16 +1,21 @@
 use anyhow::{bail, Context};
 use std::io;
 use std::net::SocketAddr;
+use std::sync::Arc;
+use std::time::Duration;
 use tokio_util::bytes::{BufMut, BytesMut};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::time::Instant;
 
-use shared::addressing::{DistributorError, Tx};
+use crate::disconnect_client::handle_mc_disconnect;
+use crate::process_socket::timeout;
+use shared::addressing::{DistributorError, Register, Tx};
+use shared::config::TIMEOUT_IN_SEC;
 use shared::distributor_error;
 use shared::minecraft::{MinecraftDataPacket, MinecraftHelloPacket};
 use shared::socket_packet::{ClientID, ClientToProxy};
@@ -27,6 +32,50 @@ pub struct MCClient {
     connection_time: Instant,
 }
 
+pub(crate) async fn handle_minecraft_client(
+    first_buf: &[u8],
+    mut socket: TcpStream,
+    register: Arc<Mutex<Register>>,
+    socket_start: &Instant,
+) -> Result<(), DistributorError> {
+    let (packet, packet_data) = match timeout(
+        &socket_start,
+        first_minecraft_packet(&mut socket, &first_buf),
+    )
+    .await
+    {
+        //Err(DistributorError::Timeout) => return Ok(()),
+        Err(e) => {
+            tracing::debug!("Connection incomplete {:?}", e);
+            return Ok(());
+        }
+        Ok(e) => e,
+    };
+
+    let proxy_tx = register.lock().await.servers.get(&packet.hostname).cloned();
+    if proxy_tx.is_none() {
+        // if there is no proxy connected for the corresponding server
+        let _ = tokio::time::timeout(
+            Duration::from_secs(TIMEOUT_IN_SEC),
+            handle_mc_disconnect(packet, packet_data, &mut socket),
+        )
+        .await;
+        return Ok(());
+    }
+    let proxy_tx = proxy_tx.ok_or(DistributorError::ServerNotFound(packet.hostname.clone()))?;
+
+    let mut client = MCClient::new(proxy_tx.clone(), socket, packet, packet_data).await?;
+
+    client
+        .handle()
+        .await
+        .map_err(|e| {
+            tracing::error!("{:?}", e);
+            e
+        })
+        .map_err(Into::into)
+}
+
 impl MCClient {
     /// Create a new instance of `Peer`.
     pub(crate) async fn new(
@@ -34,7 +83,7 @@ impl MCClient {
         socket: TcpStream,
         hello_packet: MinecraftHelloPacket,
         start_data: MinecraftDataPacket,
-    ) -> anyhow::Result<Self> {
+    ) -> anyhow::Result<Self, DistributorError> {
         // Get the client socket address
         let addr = socket
             .peer_addr()
@@ -46,16 +95,13 @@ impl MCClient {
         let (id_tx, id_rx) = oneshot::channel();
         proxy_tx
             .send(ClientToProxy::AddMinecraftClient(id_tx, tx))
-            .context("Send failed")?;
+            .map_err(distributor_error!("no client id"))?;
 
-        let id = match id_rx.await {
-            Ok(id) => id,
-            Err(e) => bail!("Could not get ID for Minecraft client {e}"),
-        };
+        let id = id_rx.await.map_err(distributor_error!("no client id"))?;
 
         proxy_tx
             .send(ClientToProxy::Packet(id, start_data))
-            .context("Send failed")?;
+            .map_err(distributor_error!("could forward first data"))?;
 
         Ok(MCClient {
             socket: Some(socket),

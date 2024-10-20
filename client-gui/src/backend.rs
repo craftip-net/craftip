@@ -105,9 +105,18 @@ async fn connection_loop(mut client: Client, state: Arc<Mutex<GuiState>>) {
         sleep(Duration::from_secs(5).saturating_sub(last_connection_attempt)).await;
 
         let start = Instant::now();
+
         let connection_result = timeout(Duration::from_secs(5), client.connect())
             .await
-            .unwrap_or_else(|_| Err(ClientError::Timeout));
+            .unwrap_or(Err(ClientError::Timeout));
+
+        let connection_result = match connection_result {
+            Ok(_) => timeout(Duration::from_secs(5), client.auth())
+                .await
+                .unwrap_or(Err(ClientError::Timeout)),
+            Err(e) => Err(e),
+        };
+
         last_connection_attempt = start.elapsed();
 
         state

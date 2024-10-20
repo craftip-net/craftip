@@ -31,6 +31,9 @@ pub enum MinecraftHelloPacketType {
     Unknown,
 }
 
+const ERROR_MSG_FIRST_LINE: &str = "Server not online!";
+const ERROR_MSG_LONG: &str = "Ask your friend to start CraftIP!";
+
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
 pub struct MinecraftHelloPacket {
     pub length: usize,
@@ -157,7 +160,7 @@ impl MinecraftHelloPacket {
         let port = cursor.get_u32();
 
         Ok(Some(MinecraftHelloPacket {
-            pkg_type: MinecraftHelloPacketType::Legacy,
+            pkg_type: MinecraftHelloPacketType::Unknown,
             length: cursor.position() as usize,
             id: 0,
             version: version as i32,
@@ -235,22 +238,12 @@ pub struct MinecraftText {
     pub bold: bool,
 }
 
-impl MinecraftText {
-    fn not_connected_error() -> Self {
-        Self {
-            text: "Server not found!\nAsk your friend to connect CraftIP!".into(),
-            color: Some("red".into()),
-            bold: false,
-        }
-    }
-}
-
 impl MinecraftHelloPacket {
     pub fn generate_response(&self) -> MinecraftDataPacket {
         match &self.pkg_type {
             MinecraftHelloPacketType::Ping => self.generate_response_ping(),
             MinecraftHelloPacketType::Connect => self.generate_response_connect(),
-            MinecraftHelloPacketType::Legacy => MinecraftDataPacket(Bytes::new()),
+            MinecraftHelloPacketType::Legacy => self.generate_response_legacy(),
             MinecraftHelloPacketType::Unknown => MinecraftDataPacket(Bytes::new()),
         }
     }
@@ -259,10 +252,14 @@ impl MinecraftHelloPacket {
     fn generate_response_ping(&self) -> MinecraftDataPacket {
         let resp = ServerListPingResponse {
             version: Version {
-                name: "1.21.0".to_string(),
-                protocol: self.version,
+                name: ERROR_MSG_FIRST_LINE.to_string(),
+                protocol: 0,
             },
-            description: MinecraftText::not_connected_error(),
+            description: MinecraftText {
+                text: "Ask your friend to start CraftIP!".into(),
+                color: Some("red".into()),
+                bold: false,
+            },
             players: Players {
                 max: 0,
                 online: 0,
@@ -280,10 +277,34 @@ impl MinecraftHelloPacket {
     fn generate_response_connect(&self) -> MinecraftDataPacket {
         let mut cursor = CustomCursor::new(BytesMut::with_capacity(1024));
         cursor.put_varint(0);
-        let error_json = serde_json::to_string(&MinecraftText::not_connected_error()).unwrap();
+        let error_json = serde_json::to_string(&MinecraftText {
+            text: format!("{}\n{}", ERROR_MSG_FIRST_LINE, ERROR_MSG_LONG),
+            color: Some("red".into()),
+            bold: false,
+        })
+        .unwrap();
         cursor.put_utf8_string(&error_json);
 
         MinecraftDataPacket::from_packet_without_len(mem::take(cursor.get_mut()).freeze())
+    }
+
+    fn generate_response_legacy(&self) -> MinecraftDataPacket {
+        let mut buf = BytesMut::with_capacity(256);
+
+        let resp_string = format!(
+            "§1\0{}\0{}\0{}\0{}\0{}",
+            "127",                // version
+            ERROR_MSG_FIRST_LINE, // version readable
+            ERROR_MSG_LONG,       // tip of minecraft server
+            0,                    // player online
+            0                     // player max
+        );
+        buf.put_u8(0xff); // kick packet
+        buf.put_u16(resp_string.len() as u16 - 1); // length - 1 because MC seems to do it like that
+        for char in resp_string.encode_utf16() {
+            buf.put_u16(char);
+        }
+        MinecraftDataPacket::from(buf.freeze())
     }
 }
 
