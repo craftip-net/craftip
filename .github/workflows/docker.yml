@@ -32,4 +32,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/craftuip/server:nightly
+          tags: ghcr.io/craftip-net/server:nightly
