@@ -5,35 +5,35 @@ on:
 
 jobs:
   build-macos:
-      strategy:
-        matrix:
-          arch: [x86_64, aarch64]
-      
-      name: ${{ matrix.arch }}
-      runs-on: macos-12
-      steps:
-        - run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y
-        - name: Add architecture ${{ matrix.arch }}
-          run: rustup target add ${{ matrix.arch }}-apple-darwin
-        - uses: actions/checkout@v4
-        - name: Build application
-          shell: bash
-          run: |
-           cd client-gui
-           export COMPILE_VERSION_FILE=../target/version
-           cargo build --release --bin client-gui --target=${{ matrix.arch }}-apple-darwin
-           cargo test --release --all
-        - name: Upload artifact
-          uses: actions/upload-artifact@v4
-          with:
-            name: ${{ matrix.arch }}-apple-darwin
-            path: target/${{ matrix.arch }}-apple-darwin/release/client-gui
-        - name: upload version
-          uses: actions/upload-artifact@v4
-          if: ${{ matrix.arch == 'aarch64'}}
-          with:
-            name: version
-            path: target/version
+    strategy:
+      matrix:
+        arch: [ x86_64, aarch64 ]
+
+    name: ${{ matrix.arch }}
+    runs-on: macos-13
+    steps:
+      - run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y
+      - name: Add architecture ${{ matrix.arch }}
+        run: rustup target add ${{ matrix.arch }}-apple-darwin
+      - uses: actions/checkout@v4
+      - name: Build application
+        shell: bash
+        run: |
+          cd client-gui
+          export COMPILE_VERSION_FILE=../target/version
+          cargo build --release --bin client-gui --target=${{ matrix.arch }}-apple-darwin
+          cargo test --release --all
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.arch }}-apple-darwin
+          path: target/${{ matrix.arch }}-apple-darwin/release/client-gui
+      - name: upload version
+        uses: actions/upload-artifact@v4
+        if: ${{ matrix.arch == 'aarch64'}}
+        with:
+          name: version
+          path: target/version
 
 
   windows:
@@ -45,7 +45,6 @@ jobs:
         run: |
           rustup target add x86_64-pc-windows-msvc
           cargo build --release --target x86_64-pc-windows-msvc
-          cargo test --release --all
 
       - uses: actions/upload-artifact@v4
         with:
@@ -54,7 +53,7 @@ jobs:
 
   universal-binary:
     name: Build DMG
-    needs: [build-macos, windows]
+    needs: [ build-macos, windows ]
     runs-on: macos-12
     steps:
       - uses: actions/checkout@v4
@@ -87,8 +86,6 @@ jobs:
         with:
           name: x86_64-pc-windows-msvc
           path: x86_64-pc-windows-msvc
-
-
 
 
       - name: Download version

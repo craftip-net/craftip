@@ -160,7 +160,7 @@ impl MinecraftHelloPacket {
         let port = cursor.get_u32();
 
         Ok(Some(MinecraftHelloPacket {
-            pkg_type: MinecraftHelloPacketType::Unknown,
+            pkg_type: MinecraftHelloPacketType::Legacy,
             length: cursor.position() as usize,
             id: 0,
             version: version as i32,
