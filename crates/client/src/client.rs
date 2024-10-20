@@ -1,7 +1,6 @@
 use std::mem;
 use std::ops::{Add, Sub};
 use std::time::Duration;
-use std::time::SystemTime;
 
 use anyhow::{bail, Result};
 use futures::SinkExt;
@@ -9,7 +8,7 @@ use shared::addressing::DistributorError;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
-use tokio::time::{sleep, sleep_until, timeout, Instant};
+use tokio::time::{sleep_until, timeout, Instant};
 use tokio_stream::StreamExt;
 use tokio_util::codec::Framed;
 

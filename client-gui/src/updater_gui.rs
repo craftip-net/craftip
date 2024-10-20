@@ -1,13 +1,13 @@
-use crate::updater::{Updater, CURRENT_VERSION};
-use crate::{updater, UpdateState};
+use crate::UpdateState;
 use eframe::egui::{Button, Color32, RichText, Ui, Widget};
 use std::thread;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
+use updater::updater::{Updater, CURRENT_VERSION};
 
 /// Returns false if update check failed
 pub(crate) fn updater_background_thread(updater_tx: UnboundedSender<UpdateState>) -> bool {
-    let updater = updater::Updater::new();
+    let updater = Updater::new();
     match updater {
         Ok(None) => {
             let _ = updater_tx.send(UpdateState::UpToDate);

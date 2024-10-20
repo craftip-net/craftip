@@ -3,9 +3,7 @@ mod backend;
 mod config;
 mod gui_channel;
 mod help_popup;
-mod updater;
 mod updater_gui;
-mod updater_proto;
 
 use anyhow::{Context, Result};
 use std::sync::{Arc, Mutex};
@@ -18,9 +16,9 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::gui_channel::{GuiTriggeredChannel, GuiTriggeredEvent, ServerState};
 use crate::help_popup::HelpPopup;
-use crate::updater::UpdateInfo;
 use crate::updater_gui::{updater_gui_headline, updater_no_consent};
-use crate::updater_proto::UpdaterError;
+use updater::updater_proto::UpdaterError;
+use updater::updater::UpdateInfo;
 use client::structs::{Server, ServerAuthentication};
 use shared::crypto::ServerPrivateKey;
 

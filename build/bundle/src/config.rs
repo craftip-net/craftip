@@ -1,1 +1,0 @@
-../../../client-gui/src/config.rs

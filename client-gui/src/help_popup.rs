@@ -1,9 +1,9 @@
 use crate::config::REPORT_PROBLEM;
-use crate::updater::CURRENT_VERSION;
 use eframe::egui;
 use eframe::egui::{Align, Align2, Label, Layout, RichText, TextEdit, Ui, Vec2};
 use poll_promise::Promise;
 use serde::{Deserialize, Serialize};
+use updater::updater::CURRENT_VERSION;
 
 #[derive(Default)]
 pub struct HelpPopup {

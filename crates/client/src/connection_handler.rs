@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
-use bytes::BytesMut;
 use shared::minecraft::MinecraftDataPacket;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio_util::bytes::BytesMut;
 
 use crate::structs::{ClientToProxy, ClientToProxyTx, ProxyToClientRx, ProxyToClientTx};
 use shared::socket_packet::{ClientID, SocketPacket};
