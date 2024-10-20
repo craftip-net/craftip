@@ -29,8 +29,6 @@ fn exec(command: &mut process::Command) -> io::Error {
     }
 }
 
-pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
-
 #[derive(Debug, Clone)]
 pub struct UpdateInfo {
     pub version: String,
@@ -46,13 +44,13 @@ pub struct Updater {
 }
 
 impl Updater {
-    pub fn new() -> Result<Option<Self>, UpdaterError> {
+    pub fn new(current_version: &str) -> Result<Option<Self>, UpdaterError> {
         //set_ssl_vars!();
         let api_url = UPDATE_URL;
 
         let resp = ureq::get(api_url).call()?;
 
-        println!("hello from the updater");
+        println!("Updater started with v{current_version}...");
         let release = resp
             .into_json::<LatestRelease>()
             .map_err(UpdaterError::ParsingError)?;
@@ -61,7 +59,7 @@ impl Updater {
             Version::parse(&release.version).map_err(|_| UpdaterError::CouldNotParseVersion)?;
 
         // if local version up to date
-        if Version::parse(CURRENT_VERSION).unwrap() >= version {
+        if Version::parse(current_version).unwrap() >= version {
             return Ok(None);
         }
 
@@ -92,7 +90,6 @@ impl Updater {
             "Checking target-arch... {}",
             current_platform::CURRENT_PLATFORM
         );
-        println!("Checking current version... v{}", CURRENT_VERSION);
 
         println!("Checking latest released version... ");
 

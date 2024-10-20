@@ -1,4 +1,4 @@
-use crate::client_handler::{first_minecraft_packet, MCClient};
+use crate::client_handler::{first_minecraft_packet, handle_minecraft_client, MCClient};
 use crate::disconnect_client::handle_mc_disconnect;
 use crate::proxy_handler::ProxyClient;
 use anyhow::{Context, Result};
@@ -6,13 +6,15 @@ use futures::SinkExt;
 use shared::addressing::{DistributorError, Register};
 use shared::config::{PROXY_IDENTIFIER, TIMEOUT_IN_SEC};
 use shared::packet_codec::PacketCodec;
+use shared::proxy::ProxyHelloPacket;
 use shared::socket_packet::SocketPacket;
 use std::future::Future;
+use std::ops::Add;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
+use tokio::time::{sleep_until, Duration, Instant};
 use tokio_stream::StreamExt;
 use tokio_util::codec::Framed;
 
@@ -25,72 +27,38 @@ pub async fn process_socket_connection(
     register: Arc<Mutex<Register>>,
 ) -> Result<()> {
     socket.set_nodelay(true)?;
+    let socket_start = Instant::now();
 
     let mut first_buf = [0u8; PROXY_IDENTIFIER.as_bytes().len()];
-    if let Err(e) = timeout(socket.read_exact(&mut first_buf)).await {
-        tracing::debug!("Error while connecting to socket {:?}", e);
+    if let Err(e) = timeout(&socket_start, socket.read_exact(&mut first_buf)).await {
+        tracing::info!("Did not recognize protocol! Error: {e:?}");
+        return Ok(());
+    }
+    // if the connection is a minecraft client
+    if first_buf != PROXY_IDENTIFIER.as_bytes() {
+        if let Err(e) = handle_minecraft_client(&first_buf, socket, register, &socket_start).await {
+            tracing::error!("Error in client handler: {e:?}");
+        }
         return Ok(());
     }
 
-    if first_buf != PROXY_IDENTIFIER.as_bytes() {
-        let (packet, packet_data) =
-            match timeout(first_minecraft_packet(&mut socket, &first_buf)).await {
-                Err(e) => {
-                    tracing::debug!("Connection incomplete {:?}", e);
-                    return Ok(());
-                }
-                Ok(e) => e,
-            };
-
-        let proxy_tx = register.lock().await.servers.get(&packet.hostname).cloned();
-        if proxy_tx.is_none() {
-            // if there is no proxy connected for the corresponding server
-            let _ = tokio::time::timeout(
-                Duration::from_secs(TIMEOUT_IN_SEC),
-                handle_mc_disconnect(packet, packet_data, socket),
-            )
-            .await;
-            return Ok(());
-        }
-        let proxy_tx = proxy_tx.ok_or(DistributorError::ServerNotFound(packet.hostname.clone()))?;
-
-        let mut client = MCClient::new(proxy_tx.clone(), socket, packet, packet_data).await?;
-
-        return client
-            .handle()
-            .await
-            .map_err(|e| {
-                tracing::error!("{:?}", e);
-                e
-            })
-            .map_err(Into::into);
-    }
-
-    let proxy_client_version = timeout(socket.read_u16()).await?;
+    // if the connection is a proxy client
+    let proxy_client_version = timeout(&socket_start, socket.read_u16()).await?;
 
     let mut frames = Framed::new(socket, PacketCodec::new(1024 * 8));
-    // In a loop, read data from the socket and write the data back.
 
-    let hello_packet = match frames.next().await {
-        Some(Ok(SocketPacket::ProxyHello(packet))) => {
-            tracing::info!(
-                "Proxy client v{} connected for {} from {:?}",
-                proxy_client_version,
-                packet.hostname,
-                frames.get_ref().peer_addr()
-            );
-            packet
-        }
-        e => {
-            tracing::info!("Wrong first packet! {:?}", e);
-            return Ok(());
-        }
-    };
+    // wait for a hello packet while permitting ping requests
+    let hello_packet = timeout(&socket_start, wait_for_hello_packet(&mut frames)).await?;
 
     let mut client = ProxyClient::new(register.clone(), &hello_packet.hostname);
 
     // authenticate
-    if let Err(e) = timeout(client.authenticate(&mut frames, &hello_packet)).await {
+    if let Err(e) = timeout(
+        &socket_start,
+        client.authenticate(&mut frames, &hello_packet),
+    )
+    .await
+    {
         tracing::warn!("could not add proxy client: {:?}", e);
         let e = SocketPacket::ProxyError(format!("Error authenticating: {:?}", e));
         frames.send(e).await?;
@@ -102,7 +70,12 @@ pub async fn process_socket_connection(
         tracing::info!("Server {} already connected!", hello_packet.hostname);
         return Ok(());
     }
-    tracing::debug!("Server {} registered and connected", hello_packet.hostname);
+    tracing::info!(
+        "Server {} with version {} authorized and connected from {:?}",
+        hello_packet.hostname,
+        proxy_client_version,
+        frames.get_ref().peer_addr()
+    );
     let response = client.handle(&mut frames).await;
     client.close_connection().await;
     response.context("proxy handler failed")?;
@@ -110,13 +83,34 @@ pub async fn process_socket_connection(
     Ok(())
 }
 
-pub async fn timeout<R, F, E>(future: F) -> Result<R, DistributorError>
+/// waits for a hello packet and returns it. If a Ping request is received, it gets responded
+async fn wait_for_hello_packet(
+    frames: &mut Framed<TcpStream, PacketCodec>,
+) -> Result<ProxyHelloPacket, DistributorError> {
+    loop {
+        match frames.next().await {
+            Some(Ok(SocketPacket::ProxyHello(packet))) => {
+                return Ok(packet);
+            }
+            Some(Ok(SocketPacket::ProxyPing(ping))) => {
+                frames.send(SocketPacket::ProxyPong(ping)).await?;
+                continue;
+            }
+            e => {
+                tracing::error!("Wrong first packet! {:?}", e);
+                return Err(DistributorError::WrongPacket);
+            }
+        }
+    }
+}
+
+pub async fn timeout<R, F, E>(start_time: &Instant, future: F) -> Result<R, DistributorError>
 where
     E: Into<DistributorError>,
     F: Future<Output = Result<R, E>>,
 {
-    match tokio::time::timeout(Duration::from_secs(TIMEOUT_IN_SEC), future).await {
-        Ok(result) => result.map_err(Into::into),
-        Err(_) => Err(DistributorError::Timeout),
+    tokio::select! {
+        res = future => res.map_err(|e|e.into()),
+        _e = sleep_until(start_time.add(Duration::from_secs(TIMEOUT_IN_SEC))) => Err(DistributorError::Timeout)
     }
 }

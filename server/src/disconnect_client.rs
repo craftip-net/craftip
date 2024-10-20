@@ -6,7 +6,7 @@ use tokio_util::bytes::{Buf, BytesMut};
 pub(crate) async fn handle_mc_disconnect(
     packet: MinecraftHelloPacket,
     data: MinecraftDataPacket,
-    mut socket: TcpStream,
+    socket: &mut TcpStream,
 ) {
     let resp = packet.generate_response();
     let _res = socket.write_all(resp.as_ref()).await;
