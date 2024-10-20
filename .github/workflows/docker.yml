@@ -47,6 +47,10 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
+      - name: Build
+        run: |
+          echo "${{ steps.push.outputs.digest }}"
+          echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
       - name: Attest
         uses: actions/attest-build-provenance@v1
         id: attest
