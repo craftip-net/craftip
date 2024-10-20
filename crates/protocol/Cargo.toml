@@ -16,10 +16,10 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 bincode = { workspace = true }
 anyhow = { workspace = true }
+ring = { workspace = true }
 
 hex = "0.4.3"
 base-x = "0.2.11"
-ring = "0.17.7"
 serde-big-array = "0.5.1"
 
 [dev-dependencies]
