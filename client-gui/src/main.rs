@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 mod backend;
 mod config;
+mod eula;
 mod gui_channel;
 mod help_popup;
 mod updater_gui;
@@ -14,13 +15,14 @@ use eframe::{egui, CreationContext, Storage};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
+use crate::eula::accept_eula;
 use crate::gui_channel::{GuiTriggeredChannel, GuiTriggeredEvent, ServerState};
 use crate::help_popup::HelpPopup;
 use crate::updater_gui::{updater_gui_headline, updater_no_consent};
-use updater::updater_proto::UpdaterError;
-use updater::updater::UpdateInfo;
 use client::structs::{Server, ServerAuthentication};
 use shared::crypto::ServerPrivateKey;
+use updater::updater::UpdateInfo;
+use updater::updater_proto::UpdaterError;
 
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -133,6 +135,7 @@ struct MyApp {
     tx: GuiTriggeredChannel,
     frames_rendered: usize,
     help: HelpPopup,
+    eula: bool,
 }
 
 impl MyApp {
@@ -161,11 +164,20 @@ impl MyApp {
             controller.update().await;
         });
 
+        let eula = matches!(
+            cc.storage
+                .unwrap()
+                .get_string("eula_accepted")
+                .map(|s| s == "true"),
+            Some(true)
+        );
+
         Self {
             tx: gui_tx,
             state,
             frames_rendered: 0,
             help: Default::default(),
+            eula,
         }
     }
 }
@@ -176,8 +188,11 @@ impl eframe::App for MyApp {
         let mut state = self.state.lock().unwrap();
         // draw ui
         CentralPanel::default().show(ctx, |ui| {
+            if !self.eula {
+                accept_eula(ui, &mut self.eula);
+            }
             self.help.render(ui);
-            ui.set_enabled(!self.help.is_open());
+            ui.set_enabled(!self.help.is_open() && self.eula);
 
             egui::menu::bar(ui, |ui| {
                 ui.heading("CraftIP");
@@ -200,10 +215,10 @@ impl eframe::App for MyApp {
                 let already_connected =
                     servers.iter().any(|s| s.state != ServerState::Disconnected);
 
-                servers.iter_mut().for_each(|server| {
+                for server in servers.iter_mut() {
                     let enabled = !already_connected || server.state != ServerState::Disconnected;
                     server.render(ui, &mut self.tx, enabled)
-                });
+                }
                 if servers.is_empty() {
                     ui.label("No servers found");
                 }
@@ -220,7 +235,6 @@ impl eframe::App for MyApp {
                     state.error = None;
                 }
             }
-            ui.label("If you are in a country far from Europe, you could experience high latency. We are working on this.")
         });
     }
     fn save(&mut self, storage: &mut dyn Storage) {
@@ -236,6 +250,7 @@ impl eframe::App for MyApp {
             .map(Server::from)
             .collect();
         storage.set_string("servers", serde_json::to_string(&servers).unwrap());
+        storage.set_string("eula_accepted", self.eula.to_string());
     }
 }
 
@@ -359,7 +374,7 @@ impl ServerPanel {
                                         RichText::new(format!("Ping {} ms", ping)),
                                     );
                                 }
-                                
+
                                 ui.label("🔌");
                             }
                         }
@@ -370,6 +385,9 @@ impl ServerPanel {
                 // center error
                 if let Some(error) = self.error.clone() {
                     ui.label(RichText::new(error).color(Color32::RED));
+                }
+                if self.ping.unwrap_or(0) > 100 {
+                    ui.label("Users far from Europe could experience high latency. We are working on this.");
                 }
                 ui.set_enabled(enabled && self.edit_local.is_none());
                 let button = match self.state {

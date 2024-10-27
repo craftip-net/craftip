@@ -100,7 +100,7 @@ impl Client {
         // writing version
         proxy_stream.write_all(&buf).await?;
 
-        let proxy = Framed::new(proxy_stream, PacketCodec::new(1024 * 4));
+        let proxy = Framed::new(proxy_stream, PacketCodec::default());
 
         self.proxy = Some(proxy);
         Ok(())

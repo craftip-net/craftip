@@ -18,13 +18,6 @@ pub enum PacketCodecError {
     Io(io::Error),
 }
 
-impl PacketCodec {
-    /// Returns a `PacketCodec` for splitting up data into packets.
-    pub fn new(max_length: usize) -> PacketCodec {
-        PacketCodec { max_length }
-    }
-}
-
 impl From<io::Error> for PacketCodecError {
     fn from(e: io::Error) -> PacketCodecError {
         PacketCodecError::Io(e)
@@ -37,10 +30,8 @@ impl From<PacketError> for PacketCodecError {
     }
 }
 
-#[derive(Debug)]
-pub struct PacketCodec {
-    max_length: usize,
-}
+#[derive(Debug, Default)]
+pub struct PacketCodec {}
 
 impl Decoder for PacketCodec {
     type Item = SocketPacket;

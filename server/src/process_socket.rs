@@ -44,7 +44,7 @@ pub async fn process_socket_connection(
     // if the connection is a proxy client
     let proxy_client_version = timeout(&socket_start, socket.read_u16()).await?;
 
-    let mut frames = Framed::new(socket, PacketCodec::new(1024 * 8));
+    let mut frames = Framed::new(socket, PacketCodec::default());
 
     // wait for a hello packet while permitting ping requests
     let hello_packet = timeout(&socket_start, wait_for_hello_packet(&mut frames)).await?;

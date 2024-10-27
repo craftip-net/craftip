@@ -91,6 +91,33 @@ impl ProxyClient {
         let mut last_packet_recv = Instant::now();
         loop {
             tokio::select! {
+                // handle packets from the proxy client
+                result = framed.next() => {
+                    last_packet_recv = Instant::now();
+                    match result {
+                        Some(Ok(SocketPacket::ProxyDisconnect(client_id))) => {
+                            distributor.remove_by_id(client_id);
+                        }
+                        Some(Ok(SocketPacket::ProxyData(packet))) => {
+                            if let Some(tx) = distributor.get_by_id(packet.client_id) {
+                                if let Err(e) = tx.send(packet.data) {
+                                    tracing::error!("could not send to minecraft client: {}", e);
+                                }
+                            }
+                        },
+                        Some(Ok(SocketPacket::ProxyPing(packet))) => {
+                            framed.send(SocketPacket::ProxyPong(packet)).await?
+                        }
+                        Some(Ok(packet)) => {
+                            tracing::info!("Received unexpected proxy packet: {:?}", packet);
+                        }
+                        None => break, // either the channel was closed or the other side closed the channel or timeout
+                        Some(Err(e)) => {
+                            tracing::info!("Connection will be closed due to {:?}", e);
+                            break
+                        }
+                    }
+                }
                 // forward packets from the minecraft clients
                 result = rx.recv() => {
                     let mut result = match result {
@@ -123,40 +150,6 @@ impl ProxyClient {
                         } else {
                             framed.send(socket_packet).await?;
                             break 'inner;
-                        }
-                    }
-                }
-                // handle packets from the proxy client
-                result = framed.next() => {
-                    last_packet_recv = Instant::now();
-                    // catching timeout error
-                    match result {
-                        Some(Ok(packet)) => {
-                            match packet {
-                                // if mc server disconnects mc client
-                                SocketPacket::ProxyDisconnect(client_id) => {
-                                    distributor.remove_by_id(client_id);
-                                }
-                                SocketPacket::ProxyData(packet) => {
-                                    if let Some(tx) = distributor.get_by_id(packet.client_id) {
-                                        if let Err(e) = tx.send(packet.data) {
-                                            tracing::error!("could not send to minecraft client: {}", e);
-                                        }
-                                    }
-                                },
-                                SocketPacket::ProxyPing(packet) => {
-                                    framed.send(SocketPacket::ProxyPong(packet)).await?
-                                }
-                                packet => {
-                                    tracing::info!("Received unexpected proxy packet: {:?}", packet);
-                                }
-                            }
-                        }
-                        None => break,
-                        // either the channel was closed or the other side closed the channel or timeout
-                        Some(Err(e)) => {
-                            tracing::info!("Connection will be closed due to {:?}", e);
-                            break
                         }
                     }
                 }
