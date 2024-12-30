@@ -1,4 +1,5 @@
 use std::mem;
+use std::mem::size_of;
 use std::ops::{Add, Sub};
 
 use anyhow::{bail, Result};

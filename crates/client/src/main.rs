@@ -2,7 +2,7 @@ use anyhow::Result;
 use client::client::Client;
 use client::structs::{Server, ServerAuthentication};
 use shared::crypto::ServerPrivateKey;
-use std::fs;
+use std::{env, fs};
 use tokio::sync::mpsc;
 
 #[tokio::main]
@@ -22,9 +22,14 @@ pub async fn main() -> Result<()> {
 
     let private_key = load_private_key();
 
+    let server = env::args().nth(1).unwrap_or_else(|| {
+        tracing::info!("Using standard localhost:25565...");
+        "localhost:25565".to_string()
+    });
+
     let server = Server {
         server: private_key.get_public_key().get_hostname(),
-        local: "localhost:25564".to_string(),
+        local: server,
         auth: ServerAuthentication::Key(private_key),
     };
     tracing::info!("Connecting to server: {}", server.server);
