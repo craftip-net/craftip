@@ -54,7 +54,7 @@ jobs:
   universal-binary:
     name: Build DMG
     needs: [ build-macos, windows ]
-    runs-on: macos-12
+    runs-on: macos-13
     steps:
       - uses: actions/checkout@v4
       - name: Download x86_64
