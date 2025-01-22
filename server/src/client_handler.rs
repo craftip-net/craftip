@@ -62,7 +62,10 @@ pub(crate) async fn handle_minecraft_client(
         .await;
         return Ok(());
     }
-    let proxy_tx = proxy_tx.ok_or(DistributorError::ServerNotFound(hostname.to_string()))?;
+    let Some(proxy_tx) = proxy_tx else {
+        tracing::info!("Server not found {}.", hostname);
+        return Err(DistributorError::ServerNotConnected(hostname.to_string()));
+    };
 
     let mut client = MCClient::new(proxy_tx.clone(), socket, hostname, packet_data).await?;
 
