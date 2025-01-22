@@ -14,6 +14,7 @@ pub struct Register {
 }
 /// Used to get rid of DNS caching
 pub fn clean_up_hostname(hostname: &str) -> &str {
+    let hostname = hostname.trim_end_matches(".");
     if hostname.starts_with("random-") {
         return hostname.split_once('.').map(|x| x.1).unwrap_or("");
     }
