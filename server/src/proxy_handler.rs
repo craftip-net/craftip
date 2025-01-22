@@ -1,11 +1,10 @@
 use std::ops::Add;
-use std::sync::Arc;
 
 use futures::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
 
+use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio::sync::{mpsc, Mutex};
 use tokio::time::sleep_until;
 use tokio::time::{Duration, Instant};
 use tokio_util::codec::Framed;

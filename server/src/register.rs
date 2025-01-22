@@ -55,6 +55,10 @@ mod tests {
             "testawe.random.com"
         );
         assert_eq!(
+            clean_up_hostname("random-ab12cd.testawe.random.com"),
+            "testawe.random.com"
+        );
+        assert_eq!(
             clean_up_hostname("testawe.random.com"),
             "testawe.random.com"
         );

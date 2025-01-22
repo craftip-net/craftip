@@ -53,7 +53,13 @@ pub(crate) async fn handle_minecraft_client(
     // this is important to get rid of prefixes that are used to prevent dns cache
     let hostname = clean_up_hostname(&packet.hostname);
     let proxy_tx = register.get_server(hostname).await;
-    if proxy_tx.is_none() {
+
+    let Some(proxy_tx) = proxy_tx else {
+        tracing::info!(
+            "Server not found {} original packet hostname {}.",
+            hostname,
+            packet.hostname
+        );
         // if there is no proxy connected for the corresponding server
         let _ = tokio::time::timeout(
             Duration::from_secs(TIMEOUT_IN_SEC),
@@ -61,10 +67,6 @@ pub(crate) async fn handle_minecraft_client(
         )
         .await;
         return Ok(());
-    }
-    let Some(proxy_tx) = proxy_tx else {
-        tracing::info!("Server not found {}.", hostname);
-        return Err(DistributorError::ServerNotConnected(hostname.to_string()));
     };
 
     let mut client = MCClient::new(proxy_tx.clone(), socket, hostname, packet_data).await?;
