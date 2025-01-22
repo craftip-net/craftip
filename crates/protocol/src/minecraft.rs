@@ -12,6 +12,8 @@ const OLD_MINECRAFT_START: [u8; 27] = [
     0x6E, 0x00, 0x67, 0x00, 0x48, 0x00, 0x6F, 0x00, 0x73, 0x00, 0x74,
 ];
 
+const FORGE_STRING: &str = "\0FORGE";
+
 #[macro_export]
 macro_rules! propagate {
     ($expr:expr) => {
@@ -41,6 +43,7 @@ pub struct MinecraftHelloPacket {
     pub id: i32,
     pub version: i32,
     pub hostname: String,
+    pub forge: bool,
     pub port: u32,
 }
 
@@ -137,6 +140,7 @@ impl MinecraftHelloPacket {
             id: 0,
             version: version as i32,
             port,
+            forge: false,
             hostname,
         }))
     }
@@ -166,6 +170,8 @@ impl MinecraftHelloPacket {
             version: version as i32,
             port,
             hostname,
+            // might not be correct always
+            forge: false,
         }))
     }
 
@@ -192,6 +198,8 @@ impl MinecraftHelloPacket {
             2 => MinecraftHelloPacketType::Connect,
             _ => MinecraftHelloPacketType::Unknown,
         };
+        let forge = hostname.ends_with(FORGE_STRING);
+        let hostname = hostname.trim_end_matches(FORGE_STRING).to_string();
         Ok(Some(MinecraftHelloPacket {
             length: cursor.position() as usize,
             pkg_type,
@@ -199,6 +207,7 @@ impl MinecraftHelloPacket {
             port: port as u32,
             version,
             hostname,
+            forge,
         }))
     }
 }

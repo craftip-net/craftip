@@ -30,6 +30,7 @@ mod tests {
                     hostname: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
                         .parse()
                         .unwrap(),
+                    forge: false,
                     port: 25565,
                 },
                 data: vec![
@@ -51,6 +52,7 @@ mod tests {
                     id: 0,
                     version: 73,
                     hostname: "hi".parse().unwrap(),
+                    forge: false,
                     port: 25565,
                 },
                 data: vec![
@@ -68,6 +70,7 @@ mod tests {
                     hostname: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
                         .parse()
                         .unwrap(),
+                    forge: false,
                     port: 25565,
                 },
                 data: vec![
@@ -89,6 +92,7 @@ mod tests {
                     id: 0,
                     version: 73,
                     hostname: "localhost".parse().unwrap(),
+                    forge: false,
                     port: 25565,
                 },
                 data: vec![
@@ -105,6 +109,7 @@ mod tests {
                     id: 0,
                     version: 73,
                     hostname: "localhost".parse().unwrap(),
+                    forge: false,
                     port: 25565,
                 },
                 data: vec![
@@ -121,6 +126,7 @@ mod tests {
                     id: 0,
                     version: 767,
                     hostname: "localhost".parse().unwrap(),
+                    forge: false,
                     port: 25564,
                 },
                 data: Vec::from(
@@ -135,6 +141,7 @@ mod tests {
                     id: 0,
                     version: 767,
                     hostname: "localhost".parse().unwrap(),
+                    forge: false,
                     port: 25564,
                 },
                 data: Vec::from(
@@ -149,9 +156,36 @@ mod tests {
                     id: 0,
                     version: 767,
                     hostname: "1234abcd001992312312.t.craftip.net".to_string(),
+                    forge: false,
                     port: 25565,
                 },
                 data: Vec::from(b")\0\xff\x05\"1234abcd001992312312.t.craftip.netc\xdd\x02"),
+            },
+            TestHelloPacket {
+                name: "Forge server ping".to_string(),
+                packet: MinecraftHelloPacket {
+                    length: 48,
+                    pkg_type: MinecraftHelloPacketType::Ping,
+                    id: 0,
+                    version: 767,
+                    hostname: "1234abcd001992312312.t.craftip.net".to_string(),
+                    forge: true,
+                    port: 25565,
+                },
+                data: Vec::from(b"/\0\xff\x05(1234abcd001992312312.t.craftip.net\0FORGEc\xdd\x01"),
+            },
+            TestHelloPacket {
+                name: "Forge server connect".to_string(),
+                packet: MinecraftHelloPacket {
+                    length: 48,
+                    pkg_type: MinecraftHelloPacketType::Connect,
+                    id: 0,
+                    version: 767,
+                    hostname: "1234abcd001992312312.t.craftip.net".to_string(),
+                    forge: true,
+                    port: 25565,
+                },
+                data: Vec::from(b"/\0\xff\x05(1234abcd001992312312.t.craftip.net\0FORGEc\xdd\x02"),
             },
         ];
         for test in test_vector {
