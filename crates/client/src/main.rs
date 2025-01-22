@@ -61,10 +61,10 @@ fn load_private_key() -> ServerPrivateKey {
     let project_dirs = directories_next::ProjectDirs::from("", "", "craftip-cli").unwrap();
     let config_dir = project_dirs.config_dir();
     if !config_dir.exists() {
-        std::fs::create_dir_all(config_dir).unwrap();
+        fs::create_dir_all(config_dir).unwrap();
     }
     // read key from file
-    let key = std::fs::read(config_dir.join("private_key")).unwrap_or_else(|_| {
+    let key = fs::read(config_dir.join("private_key")).unwrap_or_else(|_| {
         let private_key = ServerPrivateKey::default();
         let bytes = bincode::serialize(&private_key).unwrap();
         fs::write(config_dir.join("private_key"), &bytes).unwrap();
