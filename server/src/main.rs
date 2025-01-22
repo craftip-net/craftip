@@ -1,17 +1,16 @@
 use std::env;
 use std::error::Error;
-use std::sync::Arc;
 
 use tokio::net::TcpListener;
-use tokio::sync::Mutex;
 
 use crate::process_socket::process_socket_connection;
-use shared::addressing::Register;
+use crate::register::Register;
 
 mod client_handler;
 mod disconnect_client;
 mod process_socket;
 mod proxy_handler;
+mod register;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -31,10 +30,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mc_listener = TcpListener::bind(&addr).await?;
     tracing::info!("server running on {:?}", mc_listener.local_addr()?);
-    let register = Arc::new(Mutex::new(Register::default()));
+    let register = Register::default();
     loop {
         let (socket, _addr) = mc_listener.accept().await?;
-        let register = Arc::clone(&register);
+        let register = register.clone();
         tokio::spawn(async move {
             match process_socket_connection(socket, register).await {
                 Ok(_) => tracing::debug!("client disconnected"),

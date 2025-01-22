@@ -1,13 +1,4 @@
-use std::collections::HashMap;
-
 use thiserror::Error;
-use tokio::sync::mpsc;
-
-use crate::socket_packet::ClientToProxy;
-
-pub type Tx = mpsc::UnboundedSender<ClientToProxy>;
-pub type Rx = mpsc::UnboundedReceiver<ClientToProxy>;
-
 /// creates an error string with the file and line number
 #[macro_export]
 macro_rules! distributor_error {
@@ -40,11 +31,4 @@ pub enum DistributorError {
     UnknownError(String),
     #[error("IO Error")]
     IoError(#[from] std::io::Error),
-}
-
-type ServerHostname = String;
-
-#[derive(Debug, Default)]
-pub struct Register {
-    pub servers: HashMap<ServerHostname, Tx>,
 }

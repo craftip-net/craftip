@@ -10,7 +10,8 @@ use tokio::time::sleep_until;
 use tokio::time::{Duration, Instant};
 use tokio_util::codec::Framed;
 
-use shared::addressing::{DistributorError, Register};
+use crate::register::Register;
+use shared::addressing::DistributorError;
 use shared::config::{MAXIMUM_CLIENTS, PROTOCOL_VERSION, TIMEOUT_IN_SEC};
 use shared::minecraft::MinecraftDataPacket;
 use shared::packet_codec::PacketCodec;
@@ -59,14 +60,14 @@ impl Distribiutor {
 
 #[derive(Debug)]
 pub struct ProxyClient {
-    register: Arc<Mutex<Register>>,
+    register: Register,
     hostname: String,
     rx: Option<UnboundedReceiver<ClientToProxy>>,
     connected_time: Option<Instant>,
 }
 
 impl ProxyClient {
-    pub fn new(register: Arc<Mutex<Register>>, hostname: &str) -> Self {
+    pub fn new(register: Register, hostname: &str) -> Self {
         ProxyClient {
             register,
             hostname: hostname.to_string(),
@@ -164,13 +165,7 @@ impl ProxyClient {
 
     pub async fn register_connection(&mut self) -> Result<(), DistributorError> {
         let (tx, rx) = mpsc::unbounded_channel();
-        {
-            let servers = &mut self.register.lock().await.servers;
-            if servers.contains_key(&self.hostname) {
-                return Err(DistributorError::ServerAlreadyConnected);
-            }
-            servers.insert(self.hostname.clone(), tx);
-        }
+        self.register.add_server(&self.hostname, tx).await?;
         self.rx = Some(rx);
         Ok(())
     }
@@ -180,7 +175,7 @@ impl ProxyClient {
             self.hostname,
             self.connected_time.map(|t| t.elapsed())
         );
-        self.register.lock().await.servers.remove(&self.hostname);
+        self.register.remove_server(&self.hostname).await;
     }
     pub async fn authenticate(
         &mut self,

@@ -1,18 +1,20 @@
 use crate::client_handler::handle_minecraft_client;
 use crate::proxy_handler::ProxyClient;
+use crate::Register;
 use anyhow::{Context, Result};
 use futures::SinkExt;
-use shared::addressing::{DistributorError, Register};
+use shared::addressing::DistributorError;
 use shared::config::{PROXY_IDENTIFIER, TIMEOUT_IN_SEC};
 use shared::packet_codec::PacketCodec;
 use shared::proxy::ProxyHelloPacket;
-use shared::socket_packet::SocketPacket;
+use shared::socket_packet::{ClientToProxy, SocketPacket};
+use std::collections::HashMap;
 use std::future::Future;
 use std::ops::Add;
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, RwLock};
 use tokio::time::{sleep_until, Duration, Instant};
 use tokio_stream::StreamExt;
 use tokio_util::codec::Framed;
@@ -21,10 +23,7 @@ use tokio_util::codec::Framed;
 /// it decides if the client is a minecraft client or a proxy client
 /// forwards the traffic to the other side
 /// encapsulates/encapsulates the packets
-pub async fn process_socket_connection(
-    mut socket: TcpStream,
-    register: Arc<Mutex<Register>>,
-) -> Result<()> {
+pub async fn process_socket_connection(mut socket: TcpStream, register: Register) -> Result<()> {
     socket.set_nodelay(true)?;
     let socket_start = Instant::now();
 

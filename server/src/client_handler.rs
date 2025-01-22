@@ -1,6 +1,6 @@
+use crate::register::{clean_up_hostname, Register, Tx};
 use std::io;
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::bytes::{BufMut, BytesMut};
 
@@ -8,12 +8,12 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
 
 use crate::disconnect_client::handle_mc_disconnect;
 use crate::process_socket::timeout;
-use shared::addressing::{DistributorError, Register, Tx};
+use shared::addressing::DistributorError;
 use shared::config::TIMEOUT_IN_SEC;
 use shared::distributor_error;
 use shared::minecraft::{MinecraftDataPacket, MinecraftHelloPacket};
@@ -34,7 +34,7 @@ pub struct MCClient {
 pub(crate) async fn handle_minecraft_client(
     first_buf: &[u8],
     mut socket: TcpStream,
-    register: Arc<Mutex<Register>>,
+    register: Register,
     socket_start: &Instant,
 ) -> Result<(), DistributorError> {
     let (packet, packet_data) = match timeout(
@@ -50,8 +50,9 @@ pub(crate) async fn handle_minecraft_client(
         }
         Ok(e) => e,
     };
-
-    let proxy_tx = register.lock().await.servers.get(&packet.hostname).cloned();
+    // this is important to get rid of prefixes that are used to prevent dns cache
+    let hostname = clean_up_hostname(&packet.hostname);
+    let proxy_tx = register.get_server(hostname).await;
     if proxy_tx.is_none() {
         // if there is no proxy connected for the corresponding server
         let _ = tokio::time::timeout(
@@ -61,9 +62,9 @@ pub(crate) async fn handle_minecraft_client(
         .await;
         return Ok(());
     }
-    let proxy_tx = proxy_tx.ok_or(DistributorError::ServerNotFound(packet.hostname.clone()))?;
+    let proxy_tx = proxy_tx.ok_or(DistributorError::ServerNotFound(hostname.to_string()))?;
 
-    let mut client = MCClient::new(proxy_tx.clone(), socket, packet, packet_data).await?;
+    let mut client = MCClient::new(proxy_tx.clone(), socket, hostname, packet_data).await?;
 
     client
         .handle()
@@ -80,14 +81,13 @@ impl MCClient {
     pub(crate) async fn new(
         proxy_tx: Tx,
         socket: TcpStream,
-        hello_packet: MinecraftHelloPacket,
+        hostname: &str,
         start_data: MinecraftDataPacket,
     ) -> anyhow::Result<Self, DistributorError> {
         // Get the client socket address
         let addr = socket
             .peer_addr()
             .map_err(distributor_error!("could not get peer address"))?;
-        let hostname = hello_packet.hostname;
         let (tx, rx) = mpsc::unbounded_channel();
         tracing::info!("Minecraft client {} connected to {}", addr, hostname);
 
@@ -109,7 +109,7 @@ impl MCClient {
             addr,
             need_for_close: true,
             id,
-            hostname,
+            hostname: hostname.to_string(),
             connection_time: Instant::now(),
         })
     }
