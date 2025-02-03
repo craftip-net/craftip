@@ -1,4 +1,3 @@
-use crate::register::{clean_up_hostname, Register, Tx};
 use std::io;
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -13,6 +12,7 @@ use tokio::time::Instant;
 
 use crate::disconnect_client::handle_mc_disconnect;
 use crate::process_socket::timeout;
+use crate::register::{clean_up_hostname, Register, Tx};
 use shared::addressing::DistributorError;
 use shared::config::TIMEOUT_IN_SEC;
 use shared::distributor_error;
@@ -56,7 +56,7 @@ pub(crate) async fn handle_minecraft_client(
 
     let Some(proxy_tx) = proxy_tx else {
         tracing::info!(
-            "Server not found {} original packet hostname {}.",
+            "Server not found '{}' original packet hostname '{}'.",
             hostname,
             packet.hostname
         );
@@ -147,7 +147,7 @@ impl MCClient {
     pub async fn handle(&mut self) -> Result<(), DistributorError> {
         let socket = self.socket.take().unwrap();
         let (reader, mut writer) = socket.into_split();
-        // read part of socke
+        // read part of socket
         let mut reader = tokio::spawn(Self::client_reader(reader, self.proxy_tx.clone(), self.id));
 
         loop {

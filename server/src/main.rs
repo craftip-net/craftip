@@ -1,7 +1,9 @@
 use std::env;
 use std::error::Error;
+use std::time::Duration;
 
 use tokio::net::TcpListener;
+use tokio::time::sleep;
 
 use crate::process_socket::process_socket_connection;
 use crate::register::Register;
@@ -31,6 +33,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mc_listener = TcpListener::bind(&addr).await?;
     tracing::info!("server running on {:?}", mc_listener.local_addr()?);
     let register = Register::default();
+    // prints debug info how many servers are connected
+    let stat_register = register.clone();
+    tokio::spawn(async move {
+        let mut prev = 0;
+        loop {
+            let count = stat_register.get_server_count().await;
+            if prev != count {
+                tracing::info!("Currently {count} servers connected...");
+                prev = count;
+            }
+            sleep(Duration::from_secs(10)).await;
+        }
+    });
     loop {
         let (socket, _addr) = mc_listener.accept().await?;
         let register = register.clone();

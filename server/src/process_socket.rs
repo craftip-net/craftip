@@ -27,7 +27,8 @@ pub async fn process_socket_connection(mut socket: TcpStream, register: Register
 
     let mut first_buf = [0u8; PROXY_IDENTIFIER.as_bytes().len()];
     if let Err(e) = timeout(&socket_start, socket.read_exact(&mut first_buf)).await {
-        tracing::info!("Did not recognize protocol! Error: {e:?}");
+        let ip = socket.peer_addr();
+        tracing::info!("Did not recognize protocol! Error: {e:?} of {ip:?}");
         return Ok(());
     }
     // if the connection is a minecraft client

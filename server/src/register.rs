@@ -43,6 +43,10 @@ impl Register {
 
         Ok(())
     }
+
+    pub async fn get_server_count(&self) -> usize {
+        self.servers.read().await.len()
+    }
 }
 
 #[cfg(test)]
