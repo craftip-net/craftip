@@ -12,7 +12,6 @@ use std::future::Future;
 use std::ops::Add;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
-use tokio::sync::{mpsc, RwLock};
 use tokio::time::{sleep_until, Duration, Instant};
 use tokio_stream::StreamExt;
 use tokio_util::codec::Framed;
