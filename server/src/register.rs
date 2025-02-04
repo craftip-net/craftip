@@ -11,6 +11,7 @@ pub type Rx = mpsc::UnboundedReceiver<ClientToProxy>;
 #[derive(Debug, Default, Clone)]
 pub struct Register {
     servers: Arc<RwLock<HashMap<ServerHostname, Tx>>>,
+    client_count: Arc<RwLock<usize>>,
 }
 /// Used to get rid of DNS caching
 pub fn clean_up_hostname(hostname: &str) -> &str {
@@ -46,6 +47,19 @@ impl Register {
 
     pub async fn get_server_count(&self) -> usize {
         self.servers.read().await.len()
+    }
+    pub async fn add_client(&self) {
+        let mut clients = self.client_count.write().await;
+        *clients = clients.saturating_add(1);
+    }
+
+    pub async fn remove_client(&self) {
+        let mut clients = self.client_count.write().await;
+        *clients = clients.saturating_sub(1);
+    }
+
+    pub async fn get_client_count(&self) -> usize {
+        *self.client_count.read().await
     }
 }
 

@@ -199,11 +199,13 @@ impl MinecraftHelloPacket {
             _ => MinecraftHelloPacketType::Unknown,
         };
         let forge = hostname.ends_with(FORGE_STRING);
+        // removes everything after first \0
         let hostname = hostname
             .split_once('\0')
             .map(|(before, _)| before)
             .unwrap_or(&hostname);
         let hostname = hostname.to_string();
+
         Ok(Some(MinecraftHelloPacket {
             length: cursor.position() as usize,
             pkg_type,

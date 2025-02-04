@@ -70,15 +70,18 @@ pub(crate) async fn handle_minecraft_client(
     };
 
     let mut client = MCClient::new(proxy_tx.clone(), socket, hostname, packet_data).await?;
-
-    client
+    register.add_client().await;
+    let res = client
         .handle()
         .await
         .map_err(|e| {
             tracing::error!("{:?}", e);
             e
         })
-        .map_err(Into::into)
+        .map_err(Into::into);
+    register.remove_client().await;
+
+    res
 }
 
 impl MCClient {

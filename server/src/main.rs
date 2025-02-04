@@ -36,12 +36,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // prints debug info how many servers are connected
     let stat_register = register.clone();
     tokio::spawn(async move {
-        let mut prev = 0;
+        let mut prev = (0, 0);
         loop {
-            let count = stat_register.get_server_count().await;
-            if prev != count {
-                tracing::info!("Currently {count} servers connected...");
-                prev = count;
+            let server_count = stat_register.get_server_count().await;
+            let client_count = stat_register.get_client_count().await;
+            if prev != (server_count, client_count) {
+                tracing::info!(
+                    "Currently {server_count} servers and {client_count} clients connected..."
+                );
+                prev = (server_count, client_count);
             }
             sleep(Duration::from_secs(10)).await;
         }
