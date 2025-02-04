@@ -36,6 +36,11 @@ After starting the Minecraft server on the standard port `25565` you can compile
 ```bash
 cargo run --release --bin client
 ```
+To specify a different Minecraft server IP, you can run specify the IP like shown below:
+```bash
+cargo run --release --bin client -- localhost:25565
+```
+
 
 Happy Crafting :)
 
