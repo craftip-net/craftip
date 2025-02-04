@@ -15,7 +15,7 @@ COPY client-gui/ ./client-gui/
 COPY util ./util
 
 WORKDIR /craftip/server
-RUN cargo build --release
+RUN RUSTFLAGS=-g cargo build --release
 
 
 FROM alpine:3.20
