@@ -112,7 +112,10 @@ impl SocketPacket {
             })));
         }
         let packet = buf.split_to(length);
-        let result = bincode::deserialize::<SocketPacket>(&packet).unwrap();
+        let Ok(result) = bincode::deserialize::<SocketPacket>(&packet) else {
+            tracing::error!("Socket packet could not be deserialized");
+            return Err(PacketError::EncodingError);
+        };
         // decode bincode packet
         Ok(Some(result))
     }
