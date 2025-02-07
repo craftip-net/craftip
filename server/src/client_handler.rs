@@ -27,7 +27,6 @@ pub struct MCClient {
     rx: Option<UnboundedReceiver<MinecraftDataPacket>>,
     addr: SocketAddr,
     proxy_tx: Tx,
-    need_for_close: bool,
     id: ClientID,
     hostname: String,
     connection_time: Instant,
@@ -117,7 +116,6 @@ impl MCClient {
             rx: Some(rx),
             proxy_tx,
             addr,
-            need_for_close: true,
             id,
             hostname: hostname.to_string(),
             connection_time: Instant::now(),
@@ -154,23 +152,10 @@ impl MCClient {
         mut writer: OwnedWriteHalf,
     ) {
         while let Some(pkg) = rx.recv().await {
-            if let Err(_e) = writer.write_all(pkg.as_ref()).await {
+            if let Err(e) = writer.write_all(pkg.as_ref()).await {
+                tracing::debug!("write_all failed {e:?}");
                 return;
             }
-            // empty rx buffer by
-            while let Ok(pkg) = rx.try_recv() {
-                let start = Instant::now();
-                if let Err(_e) = writer.write_all(pkg.as_ref()).await {
-                    return;
-                }
-                println!("write {}", start.elapsed().as_nanos());
-            }
-            let start = Instant::now();
-            // flush
-            if let Err(_e) = writer.flush().await {
-                return;
-            }
-            println!("flush {}", start.elapsed().as_nanos());
         }
     }
     /// HANDLE MC CLIENT

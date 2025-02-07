@@ -105,7 +105,7 @@ impl ProxyClient {
             version: PROTOCOL_VERSION,
         });
         if let Err(e) = framed.send(resp).await {
-            tracing::debug!("Sending hello response failed.");
+            tracing::debug!("Sending hello response failed. {e:?}");
             return;
         }
         tracing::info!("Proxy client {} connected from {:?}", self.hostname, ip);
