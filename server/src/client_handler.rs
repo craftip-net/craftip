@@ -163,12 +163,14 @@ impl MCClient {
                 if let Err(_e) = writer.write_all(pkg.as_ref()).await {
                     return;
                 }
-                println!("{}", start.elapsed().as_nanos());
+                println!("write {}", start.elapsed().as_nanos());
             }
+            let start = Instant::now();
             // flush
             if let Err(_e) = writer.flush().await {
                 return;
             }
+            println!("flush {}", start.elapsed().as_nanos());
         }
     }
     /// HANDLE MC CLIENT
