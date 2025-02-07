@@ -66,10 +66,12 @@ impl Distribiutor {
     }
 
     /// Returns true if existed
-    fn remove_by_id(&mut self, id: ClientID) {
+    fn remove_by_id(&mut self, id: ClientID) -> bool {
         if let Some(client) = self.clients_id.get_mut(id) {
             client.take();
+            return true;
         }
+        false
     }
 
     fn get_by_id(&self, id: ClientID) -> Option<&UnboundedSender<MinecraftDataPacket>> {
@@ -208,10 +210,11 @@ impl ProxyClient {
                     }
                     ClientToProxy::AnswerPingPacket(ping) => SocketPacket::ProxyPong(ping),
                     ClientToProxy::RemoveMinecraftClient(id) => {
-                        distributor.lock().await.remove_by_id(id);
-                        if let Err(e) = writer.send(SocketPacket::ProxyDisconnect(id)).await {
-                            tracing::debug!("Could not write to socket {e:?}");
-                            return;
+                        if distributor.lock().await.remove_by_id(id) {
+                            if let Err(e) = writer.send(SocketPacket::ProxyDisconnect(id)).await {
+                                tracing::debug!("Could not write to socket {e:?}");
+                                return;
+                            }
                         }
 
                         break 'inner;
