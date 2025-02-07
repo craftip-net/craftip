@@ -23,6 +23,7 @@ use tokio_util::codec::Framed;
 pub async fn process_socket_connection(mut socket: TcpStream, register: Register) -> Result<()> {
     socket.set_nodelay(true)?;
     let socket_start = Instant::now();
+    let ip = socket.peer_addr()?;
 
     let mut first_buf = [0u8; PROXY_IDENTIFIER.as_bytes().len()];
     if let Err(e) = timeout(&socket_start, socket.read_exact(&mut first_buf)).await {
@@ -30,6 +31,7 @@ pub async fn process_socket_connection(mut socket: TcpStream, register: Register
         tracing::info!("Did not recognize protocol! Error: {e:?} of {ip:?}");
         return Ok(());
     }
+
     // if the connection is a minecraft client
     if first_buf != PROXY_IDENTIFIER.as_bytes() {
         if let Err(e) = handle_minecraft_client(&first_buf, socket, register, &socket_start).await {
@@ -39,42 +41,26 @@ pub async fn process_socket_connection(mut socket: TcpStream, register: Register
     }
 
     // if the connection is a proxy client
-    let proxy_client_version = timeout(&socket_start, socket.read_u16()).await?;
+    let _proxy_client_version = timeout(&socket_start, socket.read_u16()).await?;
 
     let mut frames = Framed::new(socket, PacketCodec::default());
 
     // wait for a hello packet while permitting ping requests
-    let hello_packet = timeout(&socket_start, wait_for_hello_packet(&mut frames)).await?;
+    let hello = timeout(&socket_start, wait_for_hello_packet(&mut frames)).await?;
 
-    let mut client = ProxyClient::new(register.clone(), &hello_packet.hostname);
+    let mut client = ProxyClient::new(register.clone(), &hello.hostname);
 
     // authenticate
-    if let Err(e) = timeout(
-        &socket_start,
-        client.authenticate(&mut frames, &hello_packet),
-    )
-    .await
-    {
+    if let Err(e) = timeout(&socket_start, client.authenticate(&mut frames, &hello)).await {
         tracing::warn!("could not add proxy client: {:?}", e);
         let e = SocketPacket::ProxyError(format!("Error authenticating: {:?}", e));
         frames.send(e).await?;
         return Ok(());
     }
-    if let Err(_err) = client.register_connection().await {
-        let p = SocketPacket::ProxyError("Server already connected. Try again later!".to_string());
-        frames.send(p).await?;
-        tracing::info!("Server {} already connected!", hello_packet.hostname);
-        return Ok(());
-    }
-    tracing::info!(
-        "Server {} with version {} authorized and connected from {:?}",
-        hello_packet.hostname,
-        proxy_client_version,
-        frames.get_ref().peer_addr()
-    );
-    let response = client.handle(frames).await;
-    client.close_connection().await;
-    response.context("proxy handler failed")?;
+
+    client.handle(frames, ip).await;
+    // important! removes proxy from register
+    client.cleanup().await;
 
     Ok(())
 }

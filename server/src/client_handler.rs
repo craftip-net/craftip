@@ -1,10 +1,11 @@
+use futures::future::{select, Either};
 use std::io;
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio_util::bytes::{BufMut, BytesMut};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::tcp::OwnedReadHalf;
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, oneshot};
@@ -23,7 +24,7 @@ use shared::socket_packet::ClientID;
 #[derive(Debug)]
 pub struct MCClient {
     socket: Option<TcpStream>,
-    rx: UnboundedReceiver<MinecraftDataPacket>,
+    rx: Option<UnboundedReceiver<MinecraftDataPacket>>,
     addr: SocketAddr,
     proxy_tx: Tx,
     need_for_close: bool,
@@ -113,7 +114,7 @@ impl MCClient {
 
         Ok(MCClient {
             socket: Some(socket),
-            rx,
+            rx: Some(rx),
             proxy_tx,
             addr,
             need_for_close: true,
@@ -147,28 +148,51 @@ impl MCClient {
             }
         }
     }
+
+    async fn client_writer(
+        mut rx: UnboundedReceiver<MinecraftDataPacket>,
+        mut writer: OwnedWriteHalf,
+    ) {
+        while let Some(pkg) = rx.recv().await {
+            if let Err(_e) = writer.write_all(pkg.as_ref()).await {
+                return;
+            }
+            // empty rx buffer by
+            while let Ok(pkg) = rx.try_recv() {
+                let start = Instant::now();
+                if let Err(_e) = writer.write_all(pkg.as_ref()).await {
+                    return;
+                }
+                println!("{}", start.elapsed().as_nanos());
+            }
+            // flush
+            if let Err(_e) = writer.flush().await {
+                return;
+            }
+        }
+    }
     /// HANDLE MC CLIENT
     pub async fn handle(&mut self) -> Result<(), DistributorError> {
         let socket = self.socket.take().unwrap();
+        let rx = self.rx.take().unwrap();
         let (reader, mut writer) = socket.into_split();
         // read part of socket
-        let mut reader = tokio::spawn(Self::client_reader(reader, self.proxy_tx.clone(), self.id));
+        let reader = tokio::spawn(Self::client_reader(reader, self.proxy_tx.clone(), self.id));
+        let writer = tokio::spawn(Self::client_writer(rx, writer));
 
-        loop {
-            tokio::select! {
-                _ = &mut reader => break,
-                res = self.rx.recv() => match res {
-                    Some(pkg) => {
-                        writer.write_all(pkg.as_ref()).await.map_err(distributor_error!("could not feed packet"))?;
-                    }
-                    None => {
-                        self.need_for_close = false;
-                        tracing::info!("client channel closed by minecraft server {}", self.addr);
-                        break
-                    }
-                }
-            }
-        }
+        let _res = select(reader, writer).await;
+
+        tracing::info!(
+            "Minecraft client {} disconnected after {:?} from {}",
+            self.addr,
+            self.connection_time.elapsed(),
+            self.hostname
+        );
+
+        let _ = self
+            .proxy_tx
+            .send(ClientToProxy::RemoveMinecraftClient(self.id));
+
         Ok(())
     }
 }
@@ -186,21 +210,5 @@ pub(crate) async fn first_minecraft_packet(
             break Ok((packet, MinecraftDataPacket::from(buf.freeze())));
         }
         socket.read_buf(&mut buf).await?;
-    }
-}
-
-impl Drop for MCClient {
-    fn drop(&mut self) {
-        tracing::info!(
-            "Minecraft client {} disconnected after {:?} from {}",
-            self.addr,
-            self.connection_time.elapsed(),
-            self.hostname
-        );
-        if self.need_for_close {
-            let _ = self
-                .proxy_tx
-                .send(ClientToProxy::RemoveMinecraftClient(self.id));
-        }
     }
 }

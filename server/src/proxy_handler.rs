@@ -1,3 +1,4 @@
+use std::net::SocketAddr;
 use std::ops::Add;
 use std::sync::Arc;
 
@@ -63,6 +64,8 @@ impl Distribiutor {
         }
         Err(DistributorError::TooManyClients)
     }
+
+    /// Returns true if existed
     fn remove_by_id(&mut self, id: ClientID) {
         if let Some(client) = self.clients_id.get_mut(id) {
             client.take();
@@ -79,9 +82,6 @@ impl Distribiutor {
 pub struct ProxyClient {
     register: Register,
     hostname: String,
-    rx: Option<UnboundedReceiver<ClientToProxy>>,
-    tx: Option<UnboundedSender<ClientToProxy>>,
-    connected_time: Option<Instant>,
 }
 
 impl ProxyClient {
@@ -89,27 +89,32 @@ impl ProxyClient {
         ProxyClient {
             register,
             hostname: hostname.to_string(),
-            rx: None,
-            tx: None,
-            connected_time: None,
         }
     }
     /// HANDLE PROXY CLIENT
-    pub async fn handle(
-        &mut self,
-        mut framed: Framed<TcpStream, PacketCodec>,
-    ) -> Result<(), DistributorError> {
+    pub async fn handle(&mut self, mut framed: Framed<TcpStream, PacketCodec>, ip: SocketAddr) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        if let Err(e) = self.register.add_server(&self.hostname, tx.clone()).await {
+            tracing::info!("Can't connect {}. {:?}", self.hostname, e);
+            let _res = framed.send(SocketPacket::ProxyError(e.to_string())).await;
+            return;
+        }
+
         // send connected
         let resp = SocketPacket::from(ProxyConnectedResponse {
             version: PROTOCOL_VERSION,
         });
-        framed.send(resp).await?;
-        self.connected_time = Some(Instant::now());
-        let rx = self.rx.take().unwrap();
-        let tx = self.tx.take().unwrap();
-        let distributor = Arc::new(Mutex::new(Distribiutor::default()));
+        if let Err(e) = framed.send(resp).await {
+            tracing::debug!("Sending hello response failed.");
+            return;
+        }
+        tracing::info!("Proxy client {} connected from {:?}", self.hostname, ip);
+
+        let connected_time = Some(Instant::now());
 
         let (writer, reader) = framed.split::<SocketPacket>();
+
+        let distributor = Arc::new(Mutex::new(Distribiutor::default()));
 
         let reader = task::spawn(ProxyClient::handle_reader(reader, distributor.clone(), tx));
         let writer = task::spawn(ProxyClient::handle_writer(writer, distributor.clone(), rx));
@@ -117,7 +122,15 @@ impl ProxyClient {
         // terminate the other task?
         //res.factor_second().1.abort();
 
-        Ok(())
+        tracing::info!(
+            "removing proxy client {} from state. Connection time: {:?}",
+            self.hostname,
+            connected_time.map(|t| t.elapsed())
+        );
+    }
+
+    pub async fn cleanup(&self) {
+        self.register.remove_server(&self.hostname).await;
     }
 
     async fn handle_reader(
@@ -195,11 +208,12 @@ impl ProxyClient {
                     }
                     ClientToProxy::AnswerPingPacket(ping) => SocketPacket::ProxyPong(ping),
                     ClientToProxy::RemoveMinecraftClient(id) => {
+                        distributor.lock().await.remove_by_id(id);
                         if let Err(e) = writer.send(SocketPacket::ProxyDisconnect(id)).await {
                             tracing::debug!("Could not write to socket {e:?}");
                             return;
                         }
-                        distributor.lock().await.remove_by_id(id);
+
                         break 'inner;
                     }
                 };
@@ -218,21 +232,6 @@ impl ProxyClient {
                 }
             }
         }
-    }
-    pub async fn register_connection(&mut self) -> Result<(), DistributorError> {
-        let (tx, rx) = mpsc::unbounded_channel();
-        self.register.add_server(&self.hostname, tx.clone()).await?;
-        self.rx = Some(rx);
-        self.tx = Some(tx);
-        Ok(())
-    }
-    pub async fn close_connection(&mut self) {
-        tracing::info!(
-            "removing proxy client {} from state. Connection time: {:?}",
-            self.hostname,
-            self.connected_time.map(|t| t.elapsed())
-        );
-        self.register.remove_server(&self.hostname).await;
     }
     pub async fn authenticate(
         &mut self,
