@@ -1,15 +1,17 @@
 use std::ops::Add;
+use std::sync::Arc;
 
+use futures::future::select;
+use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
-
-use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::task;
 use tokio::time::sleep_until;
 use tokio::time::{Duration, Instant};
 use tokio_util::codec::Framed;
 
-use crate::register::Register;
 use shared::addressing::DistributorError;
 use shared::config::{MAXIMUM_CLIENTS, PROTOCOL_VERSION, TIMEOUT_IN_SEC};
 use shared::minecraft::MinecraftDataPacket;
@@ -17,11 +19,27 @@ use shared::packet_codec::PacketCodec;
 use shared::proxy::{
     ProxyAuthenticator, ProxyConnectedResponse, ProxyDataPacket, ProxyHelloPacket,
 };
-use shared::socket_packet::{ClientID, ClientToProxy, SocketPacket};
+use shared::socket_packet::{ClientID, PingPacket, SocketPacket};
+
+use crate::register::Register;
 
 #[derive(Debug)]
 pub struct Distribiutor {
     clients_id: [Option<UnboundedSender<MinecraftDataPacket>>; MAXIMUM_CLIENTS],
+}
+
+/// Custom packet type for tokio channels to be able to close the client socket by the proxy
+/// uses Packet type as a generic type
+/// or Close to close the socket
+#[derive(Debug)]
+pub enum ClientToProxy {
+    Packet(ClientID, MinecraftDataPacket),
+    AddMinecraftClient(
+        oneshot::Sender<ClientID>,
+        UnboundedSender<MinecraftDataPacket>,
+    ),
+    RemoveMinecraftClient(ClientID),
+    AnswerPingPacket(PingPacket),
 }
 
 impl Default for Distribiutor {
@@ -62,6 +80,7 @@ pub struct ProxyClient {
     register: Register,
     hostname: String,
     rx: Option<UnboundedReceiver<ClientToProxy>>,
+    tx: Option<UnboundedSender<ClientToProxy>>,
     connected_time: Option<Instant>,
 }
 
@@ -71,42 +90,64 @@ impl ProxyClient {
             register,
             hostname: hostname.to_string(),
             rx: None,
+            tx: None,
             connected_time: None,
         }
     }
     /// HANDLE PROXY CLIENT
     pub async fn handle(
         &mut self,
-        framed: &mut Framed<TcpStream, PacketCodec>,
+        mut framed: Framed<TcpStream, PacketCodec>,
     ) -> Result<(), DistributorError> {
-        let rx = self.rx.as_mut().unwrap();
-        let mut distributor = Distribiutor::default();
-
         // send connected
         let resp = SocketPacket::from(ProxyConnectedResponse {
             version: PROTOCOL_VERSION,
         });
         framed.send(resp).await?;
         self.connected_time = Some(Instant::now());
-        let mut last_packet_recv = Instant::now();
+        let rx = self.rx.take().unwrap();
+        let tx = self.tx.take().unwrap();
+        let distributor = Arc::new(Mutex::new(Distribiutor::default()));
+
+        let (writer, reader) = framed.split::<SocketPacket>();
+
+        let reader = task::spawn(ProxyClient::handle_reader(reader, distributor.clone(), tx));
+        let writer = task::spawn(ProxyClient::handle_writer(writer, distributor.clone(), rx));
+        let _res = select(reader, writer).await;
+        // terminate the other task?
+        //res.factor_second().1.abort();
+
+        Ok(())
+    }
+
+    async fn handle_reader(
+        mut reader: SplitStream<Framed<TcpStream, PacketCodec>>,
+        distributor: Arc<Mutex<Distribiutor>>,
+        tx: UnboundedSender<ClientToProxy>,
+    ) {
+        let mut last_packet_recv;
         loop {
+            last_packet_recv = Instant::now();
+            // handle packets from the proxy client
             tokio::select! {
-                // handle packets from the proxy client
-                result = framed.next() => {
-                    last_packet_recv = Instant::now();
+                result = reader.next() => {
                     match result {
                         Some(Ok(SocketPacket::ProxyDisconnect(client_id))) => {
-                            distributor.remove_by_id(client_id);
+                            distributor.lock().await.remove_by_id(client_id);
                         }
                         Some(Ok(SocketPacket::ProxyData(packet))) => {
-                            if let Some(tx) = distributor.get_by_id(packet.client_id) {
-                                if let Err(e) = tx.send(packet.data) {
-                                    tracing::error!("could not send to minecraft client: {}", e);
-                                }
+                            let distributor = distributor.lock().await;
+                            let Some(tx) = distributor.get_by_id(packet.client_id) else {
+                                continue
+                            };
+                            if let Err(e) = tx.send(packet.data) {
+                                tracing::error!("could not send to minecraft client: {}", e);
                             }
-                        },
+                        }
                         Some(Ok(SocketPacket::ProxyPing(packet))) => {
-                            framed.send(SocketPacket::ProxyPong(packet)).await?
+                            if let Err(e) = tx.send(ClientToProxy::AnswerPingPacket(packet)) {
+                                tracing::error!("Could not repsond to ping {e:?}");
+                            }
                         }
                         Some(Ok(packet)) => {
                             tracing::info!("Received unexpected proxy packet: {:?}", packet);
@@ -114,42 +155,7 @@ impl ProxyClient {
                         None => break, // either the channel was closed or the other side closed the channel or timeout
                         Some(Err(e)) => {
                             tracing::info!("Connection will be closed due to {:?}", e);
-                            break
-                        }
-                    }
-                }
-                // forward packets from the minecraft clients
-                result = rx.recv() => {
-                    let mut result = match result {
-                        Some(result) => result,
-                        None => {
-                            tracing::info!("client channel closed {}", self.hostname);
-                            break
-                        }
-                    };
-                    'inner: loop {
-                        let socket_packet = match result {
-                            ClientToProxy::AddMinecraftClient(id_sender, tx) => {
-                                let client_id = distributor.insert(tx)?;
-                                id_sender.send(client_id).map_err(|_|DistributorError::UnknownError("Send impossible".into()))?;
-                                SocketPacket::ProxyJoin(client_id as ClientID)
-                            },
-                            ClientToProxy::Packet(id, pkg) => {
-                                // if client not found, close connection
-                                SocketPacket::from(ProxyDataPacket::new(pkg, id as ClientID))
-                            },
-                            ClientToProxy::RemoveMinecraftClient(id) => {
-                                framed.send(SocketPacket::ProxyDisconnect(id)).await?;
-                                distributor.remove_by_id(id);
-                                break 'inner;
-                            }
-                        };
-                        if let Ok(pkg_next) = rx.try_recv() {
-                            framed.feed(socket_packet).await?;
-                            result = pkg_next;
-                        } else {
-                            framed.send(socket_packet).await?;
-                            break 'inner;
+                            break;
                         }
                     }
                 }
@@ -159,13 +165,65 @@ impl ProxyClient {
                 }
             }
         }
-        Ok(())
     }
-
+    async fn handle_writer(
+        mut writer: SplitSink<Framed<TcpStream, PacketCodec>, SocketPacket>,
+        distributor: Arc<Mutex<Distribiutor>>,
+        mut rx: UnboundedReceiver<ClientToProxy>,
+    ) {
+        loop {
+            // proxy disconnected and dropped tx
+            let Some(mut result) = rx.recv().await else {
+                break;
+            };
+            'inner: loop {
+                let socket_packet = match result {
+                    ClientToProxy::AddMinecraftClient(id_sender, tx) => {
+                        let Ok(client_id) = distributor.lock().await.insert(tx) else {
+                            tracing::error!("could not get client id");
+                            return;
+                        };
+                        if let Err(e) = id_sender.send(client_id) {
+                            tracing::error!("Could not send back client ID");
+                            return;
+                        }
+                        SocketPacket::ProxyJoin(client_id as ClientID)
+                    }
+                    ClientToProxy::Packet(id, pkg) => {
+                        // if client not found, close connection
+                        SocketPacket::from(ProxyDataPacket::new(pkg, id as ClientID))
+                    }
+                    ClientToProxy::AnswerPingPacket(ping) => SocketPacket::ProxyPong(ping),
+                    ClientToProxy::RemoveMinecraftClient(id) => {
+                        if let Err(e) = writer.send(SocketPacket::ProxyDisconnect(id)).await {
+                            tracing::debug!("Could not write to socket {e:?}");
+                            return;
+                        }
+                        distributor.lock().await.remove_by_id(id);
+                        break 'inner;
+                    }
+                };
+                if let Ok(pkg_next) = rx.try_recv() {
+                    if let Err(e) = writer.feed(socket_packet).await {
+                        tracing::debug!("Could not feed to socket {e:?}");
+                        return;
+                    };
+                    result = pkg_next;
+                } else {
+                    if let Err(e) = writer.send(socket_packet).await {
+                        tracing::debug!("Could not write to socket {e:?}");
+                        return;
+                    }
+                    break 'inner;
+                }
+            }
+        }
+    }
     pub async fn register_connection(&mut self) -> Result<(), DistributorError> {
         let (tx, rx) = mpsc::unbounded_channel();
-        self.register.add_server(&self.hostname, tx).await?;
+        self.register.add_server(&self.hostname, tx.clone()).await?;
         self.rx = Some(rx);
+        self.tx = Some(tx);
         Ok(())
     }
     pub async fn close_connection(&mut self) {

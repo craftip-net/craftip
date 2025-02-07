@@ -121,19 +121,6 @@ impl SocketPacket {
     }
 }
 
-/// Custom packet type for tokio channels to be able to close the client socket by the proxy
-/// uses Packet type as a generic type
-/// or Close to close the socket
-#[derive(Debug)]
-pub enum ClientToProxy {
-    Packet(ClientID, MinecraftDataPacket),
-    AddMinecraftClient(
-        oneshot::Sender<ClientID>,
-        UnboundedSender<MinecraftDataPacket>,
-    ),
-    RemoveMinecraftClient(ClientID),
-}
-
 #[cfg(test)]
 mod tests {
     use crate::minecraft::MinecraftDataPacket;

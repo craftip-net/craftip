@@ -12,12 +12,13 @@ use tokio::time::Instant;
 
 use crate::disconnect_client::handle_mc_disconnect;
 use crate::process_socket::timeout;
+use crate::proxy_handler::ClientToProxy;
 use crate::register::{clean_up_hostname, Register, Tx};
 use shared::addressing::DistributorError;
 use shared::config::TIMEOUT_IN_SEC;
 use shared::distributor_error;
 use shared::minecraft::{MinecraftDataPacket, MinecraftHelloPacket};
-use shared::socket_packet::{ClientID, ClientToProxy};
+use shared::socket_packet::ClientID;
 
 #[derive(Debug)]
 pub struct MCClient {

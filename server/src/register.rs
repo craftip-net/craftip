@@ -1,5 +1,5 @@
+use crate::proxy_handler::ClientToProxy;
 use shared::addressing::DistributorError;
-use shared::socket_packet::ClientToProxy;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};

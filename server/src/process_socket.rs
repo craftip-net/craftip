@@ -72,7 +72,7 @@ pub async fn process_socket_connection(mut socket: TcpStream, register: Register
         proxy_client_version,
         frames.get_ref().peer_addr()
     );
-    let response = client.handle(&mut frames).await;
+    let response = client.handle(frames).await;
     client.close_connection().await;
     response.context("proxy handler failed")?;
 
