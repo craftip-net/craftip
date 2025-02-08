@@ -40,14 +40,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     loop {
         let (socket, _addr) = mc_listener.accept().await?;
         let register = register.clone();
-        tokio::spawn(async move {
-            match process_socket_connection(socket, register).await {
-                Ok(_) => tracing::debug!("client disconnected"),
-                Err(e) => {
-                    tracing::info!("client error: {:?}", e);
-                }
-            }
-        });
+        tokio::spawn(process_socket_connection(socket, register));
     }
 }
 

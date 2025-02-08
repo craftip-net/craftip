@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::ops::Add;
 use std::sync::Arc;
@@ -25,7 +26,7 @@ use shared::socket_packet::{ClientID, PingPacket, SocketPacket};
 use crate::register::Register;
 
 #[derive(Debug)]
-pub struct Distribiutor {
+pub struct Distributor {
     clients_id: [Option<UnboundedSender<MinecraftDataPacket>>; MAXIMUM_CLIENTS],
 }
 
@@ -43,7 +44,7 @@ pub enum ClientToProxy {
     AnswerPingPacket(PingPacket),
 }
 
-impl Default for Distribiutor {
+impl Default for Distributor {
     fn default() -> Self {
         const CHANNEL_NONE: Option<UnboundedSender<MinecraftDataPacket>> = None;
         Self {
@@ -51,7 +52,7 @@ impl Default for Distribiutor {
         }
     }
 }
-impl Distribiutor {
+impl Distributor {
     fn insert(
         &mut self,
         tx: UnboundedSender<MinecraftDataPacket>,
@@ -80,19 +81,25 @@ impl Distribiutor {
     }
 }
 
+pub struct Authenticated;
+pub struct NotAuthenticated;
 #[derive(Debug)]
-pub struct ProxyClient {
+pub struct ProxyClient<State = NotAuthenticated> {
     register: Register,
     hostname: String,
+    state: PhantomData<State>,
 }
 
 impl ProxyClient {
-    pub fn new(register: Register, hostname: &str) -> Self {
+    pub fn new(register: Register, hostname: &str) -> ProxyClient<NotAuthenticated> {
         ProxyClient {
             register,
             hostname: hostname.to_string(),
+            state: PhantomData::<NotAuthenticated>,
         }
     }
+}
+impl ProxyClient<Authenticated> {
     /// HANDLE PROXY CLIENT
     pub async fn handle(&mut self, mut framed: Framed<TcpStream, PacketCodec>, ip: SocketAddr) {
         let (tx, rx) = mpsc::unbounded_channel();
@@ -116,7 +123,7 @@ impl ProxyClient {
 
         let (writer, reader) = framed.split::<SocketPacket>();
 
-        let distributor = Arc::new(Mutex::new(Distribiutor::default()));
+        let distributor = Arc::new(Mutex::new(Distributor::default()));
 
         let reader = task::spawn(ProxyClient::handle_reader(reader, distributor.clone(), tx));
         let writer = task::spawn(ProxyClient::handle_writer(writer, distributor.clone(), rx));
@@ -131,13 +138,13 @@ impl ProxyClient {
         );
     }
 
-    pub async fn cleanup(&self) {
+    pub async fn cleanup(self) {
         self.register.remove_server(&self.hostname).await;
     }
 
     async fn handle_reader(
         mut reader: SplitStream<Framed<TcpStream, PacketCodec>>,
-        distributor: Arc<Mutex<Distribiutor>>,
+        distributor: Arc<Mutex<Distributor>>,
         tx: UnboundedSender<ClientToProxy>,
     ) {
         let mut last_packet_recv;
@@ -183,7 +190,7 @@ impl ProxyClient {
     }
     async fn handle_writer(
         mut writer: SplitSink<Framed<TcpStream, PacketCodec>, SocketPacket>,
-        distributor: Arc<Mutex<Distribiutor>>,
+        distributor: Arc<Mutex<Distributor>>,
         mut rx: UnboundedReceiver<ClientToProxy>,
     ) {
         loop {
@@ -199,7 +206,7 @@ impl ProxyClient {
                             return;
                         };
                         if let Err(e) = id_sender.send(client_id) {
-                            tracing::error!("Could not send back client ID");
+                            tracing::error!("Could not send back client ID {e:?}");
                             return;
                         }
                         SocketPacket::ProxyJoin(client_id as ClientID)
@@ -236,11 +243,14 @@ impl ProxyClient {
             }
         }
     }
+}
+
+impl ProxyClient<NotAuthenticated> {
     pub async fn authenticate(
-        &mut self,
+        self,
         frames: &mut Framed<TcpStream, PacketCodec>,
         packet: &ProxyHelloPacket,
-    ) -> Result<(), DistributorError> {
+    ) -> Result<ProxyClient<Authenticated>, DistributorError> {
         match &packet.auth {
             ProxyAuthenticator::PublicKey(public_key) => {
                 let challenge = public_key.create_challange().map_err(|e| {
@@ -264,7 +274,11 @@ impl ProxyClient {
                     && public_key.get_hostname() == packet.hostname
                 {
                     tracing::debug!("Client {} authenticated successfully", packet.hostname);
-                    return Ok(());
+                    return Ok(ProxyClient {
+                        register: self.register,
+                        hostname: self.hostname,
+                        state: PhantomData::<Authenticated>,
+                    });
                 }
             }
         }

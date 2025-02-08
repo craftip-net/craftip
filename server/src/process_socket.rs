@@ -1,7 +1,7 @@
 use crate::client_handler::handle_minecraft_client;
 use crate::proxy_handler::ProxyClient;
 use crate::Register;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use futures::SinkExt;
 use shared::addressing::DistributorError;
 use shared::config::{PROXY_IDENTIFIER, TIMEOUT_IN_SEC};
@@ -20,16 +20,22 @@ use tokio_util::codec::Framed;
 /// it decides if the client is a minecraft client or a proxy client
 /// forwards the traffic to the other side
 /// encapsulates/encapsulates the packets
-pub async fn process_socket_connection(mut socket: TcpStream, register: Register) -> Result<()> {
-    socket.set_nodelay(true)?;
+pub async fn process_socket_connection(mut socket: TcpStream, register: Register) {
     let socket_start = Instant::now();
-    let ip = socket.peer_addr()?;
+    if let Err(e) = socket.set_nodelay(true) {
+        tracing::error!("could not set no_delay(true) {e:?}");
+    }
+
+    let Ok(ip) = socket.peer_addr() else {
+        tracing::error!("Could not get socket address");
+        return;
+    };
 
     let mut first_buf = [0u8; PROXY_IDENTIFIER.as_bytes().len()];
     if let Err(e) = timeout(&socket_start, socket.read_exact(&mut first_buf)).await {
         let ip = socket.peer_addr();
         tracing::info!("Did not recognize protocol! Error: {e:?} of {ip:?}");
-        return Ok(());
+        return;
     }
 
     // if the connection is a minecraft client
@@ -37,32 +43,37 @@ pub async fn process_socket_connection(mut socket: TcpStream, register: Register
         if let Err(e) = handle_minecraft_client(&first_buf, socket, register, &socket_start).await {
             tracing::error!("Error in client handler: {e:?}");
         }
-        return Ok(());
+        return;
     }
 
     // if the connection is a proxy client
-    let _proxy_client_version = timeout(&socket_start, socket.read_u16()).await?;
+    let Ok(_proxy_client_version) = timeout(&socket_start, socket.read_u16()).await else {
+        return;
+    };
 
     let mut frames = Framed::new(socket, PacketCodec::default());
 
     // wait for a hello packet while permitting ping requests
-    let hello = timeout(&socket_start, wait_for_hello_packet(&mut frames)).await?;
+    let Ok(hello) = timeout(&socket_start, wait_for_hello_packet(&mut frames)).await else {
+        return;
+    };
 
-    let mut client = ProxyClient::new(register.clone(), &hello.hostname);
+    let client = ProxyClient::new(register.clone(), &hello.hostname);
 
     // authenticate
-    if let Err(e) = timeout(&socket_start, client.authenticate(&mut frames, &hello)).await {
-        tracing::warn!("could not add proxy client: {:?}", e);
-        let e = SocketPacket::ProxyError(format!("Error authenticating: {:?}", e));
-        frames.send(e).await?;
-        return Ok(());
-    }
+    let mut client = match timeout(&socket_start, client.authenticate(&mut frames, &hello)).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("could not add proxy client: {:?}", e);
+            let e = SocketPacket::ProxyError(format!("Error authenticating: {:?}", e));
+            let _res = frames.send(e).await;
+            return;
+        }
+    };
 
     client.handle(frames, ip).await;
     // important! removes proxy from register
     client.cleanup().await;
-
-    Ok(())
 }
 
 /// waits for a hello packet and returns it. If a Ping request is received, it gets responded

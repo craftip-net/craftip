@@ -1,4 +1,4 @@
-use futures::future::{select, Either};
+use futures::future::select;
 use std::io;
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -162,7 +162,7 @@ impl MCClient {
     pub async fn handle(&mut self) -> Result<(), DistributorError> {
         let socket = self.socket.take().unwrap();
         let rx = self.rx.take().unwrap();
-        let (reader, mut writer) = socket.into_split();
+        let (reader, writer) = socket.into_split();
         // read part of socket
         let reader = tokio::spawn(Self::client_reader(reader, self.proxy_tx.clone(), self.id));
         let writer = tokio::spawn(Self::client_writer(rx, writer));
