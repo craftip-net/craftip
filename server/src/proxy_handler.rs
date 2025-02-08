@@ -161,7 +161,7 @@ impl ProxyClient {
                         }
                         Some(Ok(SocketPacket::ProxyPing(packet))) => {
                             if let Err(e) = tx.send(ClientToProxy::AnswerPingPacket(packet)) {
-                                tracing::error!("Could not repsond to ping {e:?}");
+                                tracing::error!("Could not respond to ping {e:?}");
                             }
                         }
                         Some(Ok(packet)) => {
@@ -195,7 +195,7 @@ impl ProxyClient {
                 let socket_packet = match result {
                     ClientToProxy::AddMinecraftClient(id_sender, tx) => {
                         let Ok(client_id) = distributor.lock().await.insert(tx) else {
-                            tracing::error!("could not get client id");
+                            tracing::error!("could not get client id (Too many clients?)");
                             return;
                         };
                         if let Err(e) = id_sender.send(client_id) {
@@ -212,7 +212,7 @@ impl ProxyClient {
                     ClientToProxy::RemoveMinecraftClient(id) => {
                         if distributor.lock().await.remove_by_id(id) {
                             if let Err(e) = writer.send(SocketPacket::ProxyDisconnect(id)).await {
-                                tracing::debug!("Could not write to socket {e:?}");
+                                tracing::info!("Could not write ProxyDisconnect to socket {e:?}");
                                 return;
                             }
                         }
