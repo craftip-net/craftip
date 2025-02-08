@@ -36,7 +36,7 @@ impl Client {
     fn add_connection(&mut self, id: ClientID, tx: ProxyToClientTx) {
         if let Some(e) = self.connections.get_mut(id) {
             *e = Some(tx);
-            self.connections_len += 1;
+            self.connections_len = self.connections_len.saturating_add(1);
         }
         if let Some(tx) = &self.stats_tx {
             tx.send(Stats::ClientsConnected(self.connections_len))
@@ -45,6 +45,9 @@ impl Client {
     }
     pub fn remove_connection(&mut self, id: ClientID) {
         if let Some(e) = self.connections.get_mut(id) {
+            if e.is_none() {
+                return;
+            }
             *e = None;
             self.connections_len = self.connections_len.saturating_sub(1);
         }

@@ -88,13 +88,7 @@ impl ClientConnection {
         self.need_for_close = true;
         Ok(())
     }
-    /// Sends a disconnect packet to the proxy server
-    pub async fn close(&self) {
-        // if this fails, channel is already closed. Therefore, not important
-        let _ = self
-            .proxy_tx
-            .send(ClientToProxy::RemoveMinecraftClient(self.client_id));
-    }
+
     pub fn set_death(&self, error: String) {
         let _ = self.proxy_tx.send(ClientToProxy::Death(error));
     }
