@@ -33,24 +33,19 @@ pub struct MCClient {
 }
 
 pub(crate) async fn handle_minecraft_client(
-    first_buf: &[u8],
     mut socket: TcpStream,
     register: Register,
     socket_start: &Instant,
 ) -> Result<(), DistributorError> {
-    let (packet, packet_data) = match timeout(
-        &socket_start,
-        first_minecraft_packet(&mut socket, &first_buf),
-    )
-    .await
-    {
-        //Err(DistributorError::Timeout) => return Ok(()),
-        Err(e) => {
-            tracing::debug!("Connection incomplete {:?}", e);
-            return Ok(());
-        }
-        Ok(e) => e,
-    };
+    let (packet, packet_data) =
+        match timeout(&socket_start, first_minecraft_packet(&mut socket)).await {
+            //Err(DistributorError::Timeout) => return Ok(()),
+            Err(e) => {
+                tracing::debug!("Connection incomplete {:?}", e);
+                return Ok(());
+            }
+            Ok(e) => e,
+        };
     // this is important to get rid of prefixes that are used to prevent dns cache
     let hostname = clean_up_hostname(&packet.hostname);
     let proxy_tx = register.get_server(hostname).await;
@@ -187,15 +182,12 @@ impl MCClient {
 /// used to get the virtual hostname
 pub(crate) async fn first_minecraft_packet(
     socket: &mut TcpStream,
-    first_buf: &[u8],
 ) -> Result<(MinecraftHelloPacket, MinecraftDataPacket), io::Error> {
     let mut buf = BytesMut::new();
-    buf.put(first_buf);
-    socket.try_read_buf(&mut buf)?;
     loop {
+        socket.read_buf(&mut buf).await?;
         if let Ok(Some(packet)) = MinecraftHelloPacket::new(&mut buf.clone()) {
             break Ok((packet, MinecraftDataPacket::from(buf.freeze())));
         }
-        socket.read_buf(&mut buf).await?;
     }
 }

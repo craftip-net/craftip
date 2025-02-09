@@ -81,32 +81,79 @@ impl Distributor {
     }
 }
 
-pub struct Authenticated;
-pub struct NotAuthenticated;
+pub struct Authenticated {
+    framed: Option<Framed<TcpStream, PacketCodec>>,
+}
+pub struct Disconnected;
+
+pub struct NotAuthenticated {
+    hello: ProxyHelloPacket,
+    framed: Framed<TcpStream, PacketCodec>,
+}
+
 #[derive(Debug)]
 pub struct ProxyClient<State = NotAuthenticated> {
     register: Register,
     hostname: String,
-    state: PhantomData<State>,
+    state: State,
 }
 
 impl ProxyClient {
-    pub fn new(register: Register, hostname: &str) -> ProxyClient<NotAuthenticated> {
-        ProxyClient {
+    pub async fn new(
+        register: Register,
+        mut framed: Framed<TcpStream, PacketCodec>,
+    ) -> Result<ProxyClient<NotAuthenticated>, DistributorError> {
+        let hello_packet = loop {
+            match framed.next().await {
+                Some(Ok(SocketPacket::ProxyHello(packet))) => {
+                    break packet;
+                }
+                Some(Ok(SocketPacket::ProxyPing(ping))) => {
+                    framed.send(SocketPacket::ProxyPong(ping)).await?;
+                    continue;
+                }
+                e => {
+                    tracing::error!("Wrong first packet! {:?}", e);
+                    return Err(DistributorError::WrongPacket);
+                }
+            };
+        };
+        Ok(ProxyClient {
             register,
-            hostname: hostname.to_string(),
-            state: PhantomData::<NotAuthenticated>,
-        }
+            hostname: hello_packet.hostname.clone(),
+            state: NotAuthenticated {
+                hello: hello_packet,
+                framed,
+            },
+        })
     }
 }
 impl ProxyClient<Authenticated> {
+    #[inline]
+    fn into_disconnected_unsafe_proxy_not_registered_anymore(self) -> ProxyClient<Disconnected> {
+        ProxyClient {
+            register: self.register,
+            hostname: self.hostname,
+            state: Disconnected,
+        }
+    }
+    async fn into_disconnected(self) -> ProxyClient<Disconnected> {
+        self.register.remove_server(&self.hostname).await;
+        self.into_disconnected_unsafe_proxy_not_registered_anymore()
+    }
+
     /// HANDLE PROXY CLIENT
-    pub async fn handle(&mut self, mut framed: Framed<TcpStream, PacketCodec>, ip: SocketAddr) {
+    pub async fn handle(mut self, ip: &SocketAddr) -> ProxyClient<Disconnected> {
+        // can't be executed twice, since `handle` consumes proxy
+        let mut framed = self.state.framed.take().unwrap();
         let (tx, rx) = mpsc::unbounded_channel();
         if let Err(e) = self.register.add_server(&self.hostname, tx.clone()).await {
-            tracing::info!("Can't connect {}. {:?}", self.hostname, e);
-            let _res = framed.send(SocketPacket::ProxyError(e.to_string())).await;
-            return;
+            tracing::info!("Can't connect {}. Already connected?", self.hostname);
+            let _res = framed
+                .send(SocketPacket::ProxyError("Already connected?".to_string()))
+                .await;
+            // one exception, because register.add failed
+            return self.into_disconnected_unsafe_proxy_not_registered_anymore();
         }
 
         // send connected
@@ -115,7 +162,7 @@ impl ProxyClient<Authenticated> {
         });
         if let Err(e) = framed.send(resp).await {
             tracing::debug!("Sending hello response failed. {e:?}");
-            return;
+            return self.into_disconnected().await;
         }
         tracing::info!("Proxy client {} connected from {:?}", self.hostname, ip);
 
@@ -136,10 +183,7 @@ impl ProxyClient<Authenticated> {
             self.hostname,
             connected_time.map(|t| t.elapsed())
         );
-    }
-
-    pub async fn cleanup(self) {
-        self.register.remove_server(&self.hostname).await;
+        self.into_disconnected().await
     }
 
     async fn handle_reader(
@@ -246,12 +290,8 @@ impl ProxyClient<Authenticated> {
 }
 
 impl ProxyClient<NotAuthenticated> {
-    pub async fn authenticate(
-        self,
-        frames: &mut Framed<TcpStream, PacketCodec>,
-        packet: &ProxyHelloPacket,
-    ) -> Result<ProxyClient<Authenticated>, DistributorError> {
-        match &packet.auth {
+    pub async fn authenticate(mut self) -> Result<ProxyClient<Authenticated>, DistributorError> {
+        match &self.state.hello.auth {
             ProxyAuthenticator::PublicKey(public_key) => {
                 let challenge = public_key.create_challange().map_err(|e| {
                     tracing::error!("Could not create auth challenge: {:?}", e);
@@ -259,29 +299,39 @@ impl ProxyClient<NotAuthenticated> {
                 })?;
                 let auth_request = SocketPacket::ProxyAuthRequest(challenge);
 
-                frames.send(auth_request).await?;
+                self.state.framed.send(auth_request).await?;
 
-                let signature = match frames.next().await {
+                let signature = match self.state.framed.next().await {
                     Some(Ok(SocketPacket::ProxyAuthResponse(signature))) => signature,
                     e => {
-                        tracing::info!("Client did follow the auth procedure {:?}", e);
+                        tracing::error!("Client did follow the auth procedure {:?}", e);
+                        let e = SocketPacket::ProxyError(
+                            "Client did follow the auth procedure".to_string(),
+                        );
+                        let _res = self.state.framed.send(e).await;
                         return Err(DistributorError::WrongPacket);
                     }
                 };
 
                 // verify if client posses the private key
                 if public_key.verify(&challenge, &signature)
-                    && public_key.get_hostname() == packet.hostname
+                    && public_key.get_hostname() == self.hostname
                 {
-                    tracing::debug!("Client {} authenticated successfully", packet.hostname);
-                    return Ok(ProxyClient {
+                    tracing::debug!("Client {} authenticated successfully", self.hostname);
+                    Ok(ProxyClient {
                         register: self.register,
                         hostname: self.hostname,
-                        state: PhantomData::<Authenticated>,
-                    });
+                        state: Authenticated {
+                            framed: Some(self.state.framed),
+                        },
+                    })
+                } else {
+                    tracing::error!("Auth key did not match {}", self.hostname);
+                    let e = SocketPacket::ProxyError("Could not authenticate".to_string());
+                    let _res = self.state.framed.send(e).await;
+                    Err(DistributorError::AuthError)
                 }
             }
         }
-        Err(DistributorError::AuthError)
     }
 }

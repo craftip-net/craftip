@@ -45,8 +45,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 
 #[derive(Serialize)]
-struct StatsPost {
-    auth: String,
+struct StatsPost<'a> {
+    auth: &'a str,
     clients: usize,
     server: usize,
 }
@@ -74,15 +74,12 @@ async fn stats_handler(register: Register) {
             prev = (server_count, client_count);
         }
 
-        let Some(auth) = &auth else {
-            continue;
-        };
-        let Some(stats_url) = &stats_url else {
+        let (Some(auth), Some(stats_url)) = (&auth, &stats_url) else {
             continue;
         };
 
         let stats = StatsPost {
-            auth: auth.clone(),
+            auth,
             server: server_count,
             clients: client_count,
         };
