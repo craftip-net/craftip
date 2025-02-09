@@ -54,7 +54,7 @@ pub async fn process_socket_connection(mut socket: TcpStream, register: Register
     }
 
     // remove leading magic numbers
-    let _ident = &mut [0u8; PROXY_IDENTIFIER.len()];
+    let ident = &mut [0u8; PROXY_IDENTIFIER.len()];
     let Ok(_) = timeout(&socket_start, socket.read_exact(ident)).await else {
         return;
     };
