@@ -1,8 +1,8 @@
 use futures::future::select;
-use std::io;
 use std::net::SocketAddr;
 use std::time::Duration;
-use tokio_util::bytes::{BufMut, BytesMut};
+use std::{io, mem};
+use tokio_util::bytes::BytesMut;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
@@ -146,9 +146,27 @@ impl MCClient {
         mut rx: UnboundedReceiver<MinecraftDataPacket>,
         mut writer: OwnedWriteHalf,
     ) {
-        while let Some(pkg) = rx.recv().await {
-            if let Err(e) = writer.write_all(pkg.as_ref()).await {
-                tracing::debug!("write_all failed {e:?}");
+        while let Some(mut pkg) = rx.recv().await {
+            'read_all_rx: loop {
+                let mut buf = pkg.as_ref();
+                'write_all: while !buf.is_empty() {
+                    let Ok(n) = writer.write(buf).await else {
+                        tracing::debug!("Writer failed or closed");
+                        return;
+                    };
+                    if n == 0 {
+                        break 'write_all;
+                    }
+                    let (_, rest) = mem::take(&mut buf).split_at(n);
+                    buf = rest;
+                }
+                match rx.try_recv() {
+                    Err(_e) => break 'read_all_rx,
+                    Ok(next_pkg) => pkg = next_pkg,
+                }
+            }
+            if let Err(e) = writer.flush().await {
+                tracing::debug!("flush failed {e:?}");
                 return;
             }
         }
