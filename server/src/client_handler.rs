@@ -1,6 +1,7 @@
 use futures::future::select;
 use std::io;
 use std::net::SocketAddr;
+use std::ops::Add;
 use std::time::Duration;
 use tokio_util::bytes::{BufMut, BytesMut};
 
@@ -9,7 +10,7 @@ use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, oneshot};
-use tokio::time::Instant;
+use tokio::time::{timeout_at, Instant};
 
 use crate::disconnect_client::handle_mc_disconnect;
 use crate::process_socket::timeout;
@@ -123,7 +124,14 @@ impl MCClient {
     ) {
         loop {
             let mut buf = BytesMut::with_capacity(2048);
-            match reader.read_buf(&mut buf).await {
+
+            let timeout = Instant::now() + Duration::from_secs(60);
+            let Ok(recv_res) = timeout_at(timeout, reader.read_buf(&mut buf)).await else {
+                tracing::info!("Client timed out");
+                break;
+            };
+
+            match recv_res {
                 // The stream has been exhausted.
                 Ok(0) => break,
                 Ok(_len) => {
