@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::ops::Add;
 use std::sync::Arc;
@@ -147,7 +146,7 @@ impl ProxyClient<Authenticated> {
         // can't be executed twice, since `handle` consumes proxy
         let mut framed = self.state.framed.take().unwrap();
         let (tx, rx) = mpsc::unbounded_channel();
-        if let Err(e) = self.register.add_server(&self.hostname, tx.clone()).await {
+        if let Err(_e) = self.register.add_server(&self.hostname, tx.clone()).await {
             tracing::info!("Can't connect {}. Already connected?", self.hostname);
             let _res = framed
                 .send(SocketPacket::ProxyError("Already connected?".to_string()))

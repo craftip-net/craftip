@@ -43,6 +43,6 @@ codegen-units = 1 # LLVM can perform better optimizations using a single thread
 debug = true
 debug-assertions = false
 incremental = false
-#lto = 'fat'
+lto = 'fat'
 opt-level = 's'
 overflow-checks = true

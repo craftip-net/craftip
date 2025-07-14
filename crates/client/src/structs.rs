@@ -67,13 +67,13 @@ pub struct Server {
 pub enum ServerAuthentication {
     Key(ServerPrivateKey),
 }
-
+pub const STANDARD_LOCAL_PORT: &str = "25565";
 impl Server {
     pub fn new_from_key(key: ServerPrivateKey) -> Self {
         let id = key.get_public_key().get_host();
         Self {
             server: format!("{}{}", id, shared::config::KEY_SERVER_SUFFIX),
-            local: "25565".to_string(),
+            local: STANDARD_LOCAL_PORT.to_string(),
             auth: ServerAuthentication::Key(key),
         }
     }

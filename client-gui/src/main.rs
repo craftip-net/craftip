@@ -19,7 +19,7 @@ use crate::eula::accept_eula;
 use crate::gui_channel::{GuiTriggeredChannel, GuiTriggeredEvent, ServerState};
 use crate::help_popup::HelpPopup;
 use crate::updater_gui::{updater_gui_headline, updater_no_consent};
-use client::structs::{Server, ServerAuthentication};
+use client::structs::{Server, ServerAuthentication, STANDARD_LOCAL_PORT};
 use shared::crypto::ServerPrivateKey;
 use updater::updater::UpdateInfo;
 use updater::updater_proto::UpdaterError;
@@ -290,7 +290,7 @@ impl ServerPanel {
                     .num_columns(2)
                     .spacing([40.0, 4.0])
                     .show(ui, |ui| {
-                        ui.add(Label::new("Server IP"))
+                        ui.add(Label::new("Server IP  ℹ"))
                             .on_hover_text("Share this address with your friends so they can join the server.");
 
                         ui.horizontal(|ui| {
@@ -302,13 +302,12 @@ impl ServerPanel {
                         });
                         ui.end_row();
 
-                        ui.add(Label::new("local port"))
-                            .on_hover_text("Enter the Port the Minecraft Server is running on your machine\nIf you want to open the word in LAN use the default port 25565");
+                        ui.add(Label::new("local port ℹ"))
+                            .on_hover_text("Enter the port of your Minecraft server running on your machine.\n(e.g. \"25565\" or \"localhost:25565\")");
 
                         ui.horizontal(|ui| {
                             match &mut self.edit_local {
                                 None => {
-
                                     ui.label(&self.local);
                                     ui.vertical(|ui| {
                                         ui.set_enabled(configurable);
@@ -327,14 +326,19 @@ impl ServerPanel {
                                     let update_txt = ui.add(port);
                                     let update_btn = ui.add(ok);
 
-                                    let enter_pressed = update_txt.lost_focus() && ui.ctx().input(|i| {i.key_pressed(egui::Key::Enter)});
+                                    let enter_pressed = update_txt.lost_focus() && ui.ctx().input(|i| { i.key_pressed(egui::Key::Enter) });
 
                                     if enter_pressed || update_btn.clicked() {
                                         self.local = self.edit_local.take().unwrap();
                                     }
-                                    let cancel = egui::Button::new(RichText::new("❌").color(Color32::RED));
+                                    /*let cancel = egui::Button::new(RichText::new("❌").color(Color32::RED));
                                     if ui.add(cancel).clicked() {
                                         self.edit_local = None;
+                                    }*/
+                                    let reset = egui::Button::new(RichText::new("reset"));
+                                    if ui.add(reset).clicked() {
+                                        self.edit_local = None;
+                                        self.local = STANDARD_LOCAL_PORT.to_string();
                                     }
                                 }
                             }
@@ -347,6 +351,7 @@ impl ServerPanel {
                     ui.with_layout(Layout::top_down(Align::RIGHT), |ui| {
                         match self.state {
                             ServerState::Disconnected => {
+                                ui.set_enabled(false);
                                 if ui.button("🗑").clicked() {
                                     println!("delete button clicked");
                                 }
@@ -397,7 +402,7 @@ impl ServerPanel {
                     ServerState::Disconnecting => {
                         ui.set_enabled(false);
                         egui::Button::new("Disconnecting...")
-                    },
+                    }
                 };
                 if ui
                     .add_sized(
@@ -419,7 +424,7 @@ impl ServerPanel {
                             let local = match server.local.parse::<u16>() {
                                 Ok(port) => {
                                     format!("localhost:{}", port)
-                                },
+                                }
                                 Err(_) => server.local.clone()
                             };
                             server.local = local;
