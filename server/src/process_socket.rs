@@ -35,7 +35,6 @@ pub async fn process_socket_connection(mut socket: TcpStream, register: Register
                 if len == PROXY_IDENTIFIER.as_bytes().len() {
                     break;
                 }
-                tracing::info!("Had to sleep. Peek was not sufficient! got only {len}bytes");
             }
             Err(e) => {
                 tracing::info!("Did not recognize protocol! Error: {e:?} of {ip:?}");
