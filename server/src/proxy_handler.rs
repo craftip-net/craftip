@@ -303,7 +303,7 @@ impl ProxyClient<NotAuthenticated> {
                 let signature = match self.state.framed.next().await {
                     Some(Ok(SocketPacket::ProxyAuthResponse(signature))) => signature,
                     e => {
-                        tracing::error!("Client did follow the auth procedure {:?}", e);
+                        tracing::error!("Client trying to authenticate for {} did follow the auth procedure {:?}", self.hostname, e);
                         let e = SocketPacket::ProxyError(
                             "Client did follow the auth procedure".to_string(),
                         );
@@ -313,23 +313,23 @@ impl ProxyClient<NotAuthenticated> {
                 };
 
                 // verify if client posses the private key
-                if public_key.verify(&challenge, &signature)
-                    && public_key.get_hostname() == self.hostname
+                if !public_key.verify(&challenge, &signature)
+                    || public_key.get_hostname() != self.hostname
                 {
-                    tracing::debug!("Client {} authenticated successfully", self.hostname);
-                    Ok(ProxyClient {
-                        register: self.register,
-                        hostname: self.hostname,
-                        state: Authenticated {
-                            framed: Some(self.state.framed),
-                        },
-                    })
-                } else {
                     tracing::error!("Auth key did not match {}", self.hostname);
                     let e = SocketPacket::ProxyError("Could not authenticate".to_string());
                     let _res = self.state.framed.send(e).await;
-                    Err(DistributorError::AuthError)
+                    return Err(DistributorError::AuthError);
                 }
+
+                tracing::debug!("Client {} authenticated successfully", self.hostname);
+                Ok(ProxyClient {
+                    register: self.register,
+                    hostname: self.hostname,
+                    state: Authenticated {
+                        framed: Some(self.state.framed),
+                    },
+                })
             }
         }
     }
