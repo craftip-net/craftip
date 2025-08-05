@@ -16,8 +16,8 @@ overflow-checks = true      # Enable integer overflow checks.
 debug = false               # Disable debug information.
 
 [workspace.dependencies]
-tokio = { version = "1.35", features = ["full", "tracing"] }
-tokio-util = { version = "0.7.10", features = ["full"] }
+tokio = { version = "1.47", features = ["full", "tracing"] }
+tokio-util = { version = "0.7.16", features = ["full"] }
 tokio-stream = { version = "0.1" }
 thiserror = "1.0.53"
 futures = { version = "0.3.0", features = ["thread-pool"] }
@@ -28,7 +28,7 @@ bincode = "1.3.3"
 anyhow = "1.0.78"
 
 base64 = "0.22.1"
-ring = "0.17.7"
+ring = "0.17.14"
 liblzma = { version = "0.3.4", features = ["static"] }
 ureq = { version = "2.10.1", default-features = false, features = ["json", "tls"] }
 
