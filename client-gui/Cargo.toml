@@ -21,8 +21,15 @@ tracing-subscriber = "0.3.18"
 
 
 # for linux support, check dependencies again
-eframe = { version = "0.25.0", default-features = false, features = ["persistence", "wgpu", "accesskit", "default_fonts"] }
-image = { version = "0.24", default-features = false, features = ["png"] }
+eframe = { version = "0.32", default-features = false, features = [
+    "accesskit", # Make egui compatible with screen readers. NOTE: adds a lot of dependencies.
+    "default_fonts", # Embed the default egui fonts.
+    "wgpu", # Use the glow rendering backend. Alternative: "wgpu".
+    "persistence", # Enable restoring app state when restarting the app.
+    "wayland", # To support Linux (and CI)
+    "x11", # To support older Linux distributions (restores one of the default features)
+] }
+image = { version = "0.25.6", default-features = false, features = ["png"] }
 ehttp = { version = "0.5.0", features = ["json"] }
 poll-promise = "0.3.0"
 
