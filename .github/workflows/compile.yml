@@ -8,8 +8,7 @@ jobs:
     strategy:
       matrix:
         arch: [ x86_64, aarch64 ]
-
-    name: ${{ matrix.arch }}
+    name: ${{ matrix.arch }}-mac
     runs-on: macos-13
     steps:
       - run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y
@@ -35,8 +34,11 @@ jobs:
           name: version
           path: target/version
 
-
-  windows:
+  build-windows:
+    strategy:
+      matrix:
+        arch: [ x86_64, i686 ]
+    name: ${{ matrix.arch }}-windows
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,12 +50,12 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: x86_64-pc-windows-msvc
+          name: ${{ matrix.arch }}-pc-windows-msvc
           path: target/x86_64-pc-windows-msvc/release/client-gui.exe
 
   universal-binary:
     name: Build DMG
-    needs: [ build-macos, windows ]
+    needs: [ build-macos, build-windows ]
     runs-on: macos-13
     steps:
       - uses: actions/checkout@v4
