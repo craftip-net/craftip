@@ -292,13 +292,13 @@ impl ServerPanel {
             }
             ui.with_layout(Layout::left_to_right(Align::TOP), |ui| {
                 egui::Grid::new(self.server.as_str())
-                    .num_columns(2)
-                    .spacing([40.0, 4.0])
+                    .num_columns(3)
+                    .spacing([4.0, 4.0])
                     .show(ui, |ui| {
                         ui.style_mut().interaction.selectable_labels = false;
-                        ui.add(Label::new("Server IP  ℹ"))
+                        ui.add(Label::new("Server IP"));
+                        ui.add(Label::new("ℹ"))
                             .on_hover_text("Share this address with your friends so they can join the server.");
-
                         ui.horizontal(|ui| {
                             ui.label(&self.server);
                             // copy button
@@ -308,7 +308,8 @@ impl ServerPanel {
                         });
                         ui.end_row();
 
-                        ui.add(Label::new("local port ℹ"))
+                        ui.add(Label::new("local port"));
+                        ui.add(Label::new("ℹ"))
                             .on_hover_text("Enter the port of your Minecraft server running on your machine.\n(e.g. \"25565\" or \"localhost:25565\")");
 
                         ui.horizontal(|ui| {
