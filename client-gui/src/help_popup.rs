@@ -35,7 +35,9 @@ impl HelpPopup {
                 ui.add_sized(Vec2::new(300.0, 10.0), label);
                 ui.label("");
 
-                ui.set_enabled(self.promise.is_none());
+                if self.promise.is_some() {
+                    ui.disable();
+                }
 
                 ui.label("Email for response (optional):");
                 ui.text_edit_singleline(&mut self.email);
@@ -92,7 +94,7 @@ impl HelpPopup {
                         let label = Label::new(
                             Into::<RichText>::into(error).color(ui.visuals().error_fg_color),
                         )
-                        .wrap(true);
+                        .wrap();
                         ui.add_sized(Vec2::new(200.0, 10.0), label);
                     }
                 });

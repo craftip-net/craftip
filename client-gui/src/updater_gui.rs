@@ -63,8 +63,8 @@ pub(crate) fn updater_gui_headline(ui: &mut Ui, update_status: &mut UpdateState)
     ui.label(RichText::new(format!("v{}", CURRENT_VERSION)).small());
     match update_status {
         UpdateState::Error(e) => {
-            ui.colored_label(Color32::RED, format!("Updater: {}", e))
-                .on_hover_text(format!("{:?}", e));
+            ui.colored_label(Color32::RED, format!("Updater: {e}"))
+                .on_hover_text(format!("{e:?}"));
         }
         UpdateState::CheckingForUpdate => {
             ui.label("Checking for update...");

@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex};
 use eframe::egui::{CentralPanel, Color32, IconData, Label, Layout, RichText, TextEdit, Ui};
 use eframe::emath::Align;
 use eframe::{egui, CreationContext, Storage};
+use egui::containers;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
@@ -63,7 +64,7 @@ pub async fn main() -> Result<(), eframe::Error> {
         options,
         Box::new(|cc| {
             // add context to state to redraw from other threads
-            Box::new(MyApp::new(cc, updater_rx))
+            Ok(Box::new(MyApp::new(cc, updater_rx)))
         }),
     )
 }
@@ -192,9 +193,11 @@ impl eframe::App for MyApp {
                 accept_eula(ui, &mut self.eula);
             }
             self.help.render(ui);
-            ui.set_enabled(!self.help.is_open() && self.eula);
+            if self.help.is_open() || !self.eula {
+                ui.disable();
+            }
 
-            egui::menu::bar(ui, |ui| {
+            containers::menu::MenuBar::new().ui(ui, |ui| {
                 ui.heading("CraftIP");
                 if state.loading {
                     ui.spinner();
@@ -284,25 +287,29 @@ impl ServerPanel {
     fn render(&mut self, ui: &mut Ui, tx: &mut GuiTriggeredChannel, enabled: bool) {
         let configurable = self.state == ServerState::Disconnected;
         ui.group(|ui| {
-            ui.set_enabled(enabled);
+            if !enabled {
+                ui.disable();
+            }
             ui.with_layout(Layout::left_to_right(Align::TOP), |ui| {
                 egui::Grid::new(self.server.as_str())
-                    .num_columns(2)
-                    .spacing([40.0, 4.0])
+                    .num_columns(3)
+                    .spacing([4.0, 4.0])
                     .show(ui, |ui| {
-                        ui.add(Label::new("Server IP  ℹ"))
+                        ui.style_mut().interaction.selectable_labels = false;
+                        ui.add(Label::new("Server IP"));
+                        ui.add(Label::new("ℹ"))
                             .on_hover_text("Share this address with your friends so they can join the server.");
-
                         ui.horizontal(|ui| {
                             ui.label(&self.server);
                             // copy button
                             if ui.button("📋").clicked() {
-                                ui.output_mut(|o| o.copied_text = self.server.clone());
+                                ui.ctx().copy_text(self.server.clone());
                             }
                         });
                         ui.end_row();
 
-                        ui.add(Label::new("local port ℹ"))
+                        ui.add(Label::new("local port"));
+                        ui.add(Label::new("ℹ"))
                             .on_hover_text("Enter the port of your Minecraft server running on your machine.\n(e.g. \"25565\" or \"localhost:25565\")");
 
                         ui.horizontal(|ui| {
@@ -310,18 +317,20 @@ impl ServerPanel {
                                 None => {
                                     ui.label(&self.local);
                                     ui.vertical(|ui| {
-                                        ui.set_enabled(configurable);
+                                        if !configurable {
+                                            ui.disable();
+                                        }
                                         if ui.button("✏").clicked() {
                                             self.edit_local = Some(self.local.clone());
                                         }
                                     });
                                     if ui.button("📋").clicked() {
-                                        ui.output_mut(|o| o.copied_text = self.local.clone());
+                                        ui.ctx().copy_text(self.local.clone());
                                     }
                                 }
                                 Some(edit_local) => {
                                     let port = TextEdit::singleline(edit_local).desired_width(100.0);
-                                    let ok = egui::Button::new(RichText::new("✔").color(Color32::DARK_GREEN));
+                                    let ok = egui::Button::new(RichText::new("ok").color(Color32::DARK_GREEN));
 
                                     let update_txt = ui.add(port);
                                     let update_btn = ui.add(ok);
@@ -331,10 +340,10 @@ impl ServerPanel {
                                     if enter_pressed || update_btn.clicked() {
                                         self.local = self.edit_local.take().unwrap();
                                     }
-                                    /*let cancel = egui::Button::new(RichText::new("❌").color(Color32::RED));
+                                    let cancel = egui::Button::new(RichText::new("cancel").color(Color32::RED));
                                     if ui.add(cancel).clicked() {
                                         self.edit_local = None;
-                                    }*/
+                                    }
                                     let reset = egui::Button::new(RichText::new("reset"));
                                     if ui.add(reset).clicked() {
                                         self.edit_local = None;
@@ -349,9 +358,9 @@ impl ServerPanel {
 
                 ui.with_layout(Layout::right_to_left(Align::TOP), |ui| {
                     ui.with_layout(Layout::top_down(Align::RIGHT), |ui| {
-                        match self.state {
+                        match &self.state {
                             ServerState::Disconnected => {
-                                ui.set_enabled(false);
+                                ui.disable();
                                 if ui.button("🗑").clicked() {
                                     println!("delete button clicked");
                                 }
@@ -361,7 +370,7 @@ impl ServerPanel {
                                 ui.spinner();
                             }
                             ServerState::Connecting(attempt) => {
-                                ui.label(format!("Connecting ({}x)", attempt).as_str());
+                                ui.label(format!("Connecting ({attempt}x)").as_str());
                                 ui.spinner();
                             }
                             ServerState::Disconnecting => {
@@ -371,12 +380,12 @@ impl ServerPanel {
                             ServerState::Connected(connected) => {
                                 // leaf green color
                                 let label = ui.label(
-                                    RichText::new(format!("{} Clients", connected))
+                                    RichText::new(format!("{connected} Clients"))
                                         .color(Color32::from_rgb(0, 204, 0)),
                                 );
-                                if let Some(ping) = self.ping {
+                                if let Some(ping) = &self.ping {
                                     label.on_hover_text(
-                                        RichText::new(format!("Ping {} ms", ping)),
+                                        RichText::new(format!("Ping {ping} ms")),
                                     );
                                 }
 
@@ -394,13 +403,16 @@ impl ServerPanel {
                 if self.ping.unwrap_or(0) > 100 {
                     ui.label("Users far from Europe could experience high latency. We are working on this.");
                 }
-                ui.set_enabled(enabled && self.edit_local.is_none());
+                if !enabled || self.edit_local.is_some() {
+                    ui.disable()
+                }
+                //ui.set_enabled(enabled && self.edit_local.is_none());
                 let button = match self.state {
                     ServerState::Disconnected => egui::Button::new("Connect"),
                     ServerState::Connecting(_) => egui::Button::new("Stop connecting"),
                     ServerState::Connected(_) => egui::Button::new("Disconnect"),
                     ServerState::Disconnecting => {
-                        ui.set_enabled(false);
+                        ui.disable();
                         egui::Button::new("Disconnecting...")
                     }
                 };
@@ -423,7 +435,7 @@ impl ServerPanel {
                             let mut server = Server::from(&self.clone());
                             let local = match server.local.parse::<u16>() {
                                 Ok(port) => {
-                                    format!("localhost:{}", port)
+                                    format!("localhost:{port}")
                                 }
                                 Err(_) => server.local.clone()
                             };
