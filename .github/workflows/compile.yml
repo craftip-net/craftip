@@ -87,6 +87,12 @@ jobs:
           name: x86_64-pc-windows-msvc
           path: x86_64-pc-windows-msvc
 
+      - name: Download windows
+        uses: actions/download-artifact@v4
+        with:
+          name: i686-pc-windows-msvc
+          path: i686-pc-windows-msvc
+
 
       - name: Download version
         uses: actions/download-artifact@v4
@@ -101,11 +107,13 @@ jobs:
           cp x86_64-apple-darwin/client-gui bundle/bin/x86_64-apple-darwin
           cp aarch64-apple-darwin/client-gui bundle/bin/aarch64-apple-darwin
           cp x86_64-pc-windows-msvc/client-gui.exe bundle/bin/x86_64-pc-windows-msvc
+          cp i686-pc-windows-msvc/client-gui.exe bundle/bin/i686-pc-windows-msvc
           cp version/version bundle/version
           
           mkdir bundle/downloads
           cp CraftIP.dmg bundle/downloads/CraftIP.dmg
           cp x86_64-pc-windows-msvc/client-gui.exe bundle/downloads/CraftIP.exe
+          cp i686-pc-windows-msvc/client-gui.exe bundle/downloads/CraftIP-32bit.exe
       - name: upload bundle
         uses: actions/upload-artifact@v4
         with:

@@ -15,6 +15,13 @@ use updater::updater_proto::{
     decompress, get_bytes_for_signature, verify_signature, LatestRelease, Target, UpdaterError,
 };
 
+const TARGETS: [&str; 4] = [
+    "x86_64-pc-windows-msvc",
+    "i686-pc-windows-msvc",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+];
+
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
@@ -65,12 +72,6 @@ fn build_update(input: &str, output: &str, version: &str) {
     std::io::stdout().flush().unwrap();
     let key = read_password().unwrap();
 
-    let targets = [
-        "x86_64-pc-windows-msvc",
-        "aarch64-apple-darwin",
-        "x86_64-apple-darwin",
-    ];
-
     let timestamp = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
@@ -82,7 +83,7 @@ fn build_update(input: &str, output: &str, version: &str) {
         targets: vec![],
     };
 
-    for target in targets {
+    for target in TARGETS {
         println!("Target {}", target);
         let executable = Path::new(input).join(target);
         print!("   Compressing {:?}... ", executable);
@@ -139,7 +140,9 @@ fn verify_release_json(url: &str) {
         .into_json::<LatestRelease>()
         .unwrap();
     let temp_folder = tempfile::TempDir::new().unwrap();
+    assert_eq!(release.targets.len(), TARGETS.len());
     for target in release.targets {
+        assert!(TARGETS.contains(&target.target.as_str()));
         let mut resp = Vec::new();
         let _len = ureq::get(&target.url)
             .call()
