@@ -19,7 +19,7 @@ debug = false               # Disable debug information.
 tokio = { version = "1.47", features = ["full", "tracing"] }
 tokio-util = { version = "0.7.16", features = ["full"] }
 tokio-stream = { version = "0.1" }
-thiserror = "1.0.53"
+thiserror = "2.0.16"
 futures = { version = "0.3.0", features = ["thread-pool"] }
 tracing = "0.1.29"
 serde = { version = "1.0", features = ["derive"] }
