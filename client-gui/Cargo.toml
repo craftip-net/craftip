@@ -28,7 +28,7 @@ eframe = { version = "0.32", default-features = false, features = [
     "wayland", # To support Linux (and CI)
     "x11", # To support older Linux distributions (restores one of the default features)
 ] }
-wgpu = { version = "25" }
+wgpu = { version = "26" }
 egui = "0.32"
 image = { version = "0.25.6", default-features = false, features = ["png"] }
 ehttp = { version = "0.5.0", features = ["json"] }
