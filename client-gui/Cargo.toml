@@ -39,7 +39,7 @@ client = { path = "../crates/client" }
 updater = { path = "../crates/updater" }
 
 
-tempfile = "3.9.0"
+tempfile = "3.23.0"
 current_platform = "0.2.0"
 
 
