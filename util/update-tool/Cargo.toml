@@ -14,7 +14,7 @@ thiserror = { workspace = true }
 ureq = { workspace = true }
 
 rpassword = "7.3.1"
-tempfile = "3.13.0"
+tempfile = "3.23.0"
 clap = { version = "4.5.18", features = ["derive"] }
 
 updater = { path = "../../crates/updater" }
