@@ -6,6 +6,7 @@ use std::env::consts::EXE_SUFFIX;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::{env, io, process};
+use ureq::Agent;
 
 // https://github.com/lichess-org/fishnet/blob/90f12cd532a43002a276302738f916210a2d526d/src/main.rs
 #[cfg(unix)]
@@ -41,14 +42,19 @@ pub struct Updater {
     target: Target,
     version: String,
     changelog: String,
+    agent: Agent,
 }
 
 impl Updater {
     pub fn new(current_version: &str) -> Result<Option<Self>, UpdaterError> {
         //set_ssl_vars!();
-        let api_url = UPDATE_URL;
+        let user_agent = format!(
+            "CraftIP Updater v{current_version} {}",
+            current_platform::CURRENT_PLATFORM
+        );
+        let agent = ureq::builder().user_agent(user_agent.as_str()).build();
 
-        let resp = ureq::get(api_url).call()?;
+        let resp = agent.get(UPDATE_URL).call()?;
 
         println!("Updater started with v{current_version}...");
         let release = resp
@@ -74,6 +80,7 @@ impl Updater {
             changelog: release.changelog,
             target,
             version: release.version,
+            agent,
         }))
     }
 
@@ -101,9 +108,9 @@ impl Updater {
 
         println!("Downloading...");
 
-        let resp = ureq::get(&self.target.url).call()?;
+        let resp = self.agent.get(&self.target.url).call()?;
         let resp = resp.into_reader();
-        let mut out = File::create(&archive).expect("failed to create file");
+        let mut out = File::create(&archive)?;
 
         let mut hash = Context::new(&SHA512);
         let mut src = BufReader::new(resp);
