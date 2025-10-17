@@ -1,4 +1,5 @@
 pub const UPDATE_URL: &str = "https://update.craftip.net/update/v1/latest.json";
+pub const UPDATE_ERROR_REPORT_URL: &str = "https://api.craftip.net/v1/client/reporter/update_error";
 
 pub const DISTRIBUTION_PUBLIC_KEY: [u8; 32] = [
     0x56, 0x6c, 0xea, 0xad, 0xff, 0x19, 0xcc, 0xd6, 0xe3, 0x95, 0xf6, 0xd8, 0xb1, 0x45, 0x4e, 0x8a,

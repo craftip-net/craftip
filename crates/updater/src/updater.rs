@@ -1,4 +1,5 @@
 use crate::config::UPDATE_URL;
+use crate::reporter::report_update_error;
 use crate::updater_proto::{decompress, verify_signature, LatestRelease, Target, UpdaterError};
 use ring::digest::{Context, SHA512};
 use semver::Version;
@@ -93,72 +94,90 @@ impl Updater {
     }
 
     pub fn update(&self) -> Result<(), UpdaterError> {
-        println!(
-            "Checking target-arch... {}",
-            current_platform::CURRENT_PLATFORM
-        );
+        let update = || -> Result<(), UpdaterError> {
+            println!(
+                "Checking target-arch... {}",
+                current_platform::CURRENT_PLATFORM
+            );
 
-        println!("Checking latest released version... ");
+            println!("Checking latest released version... ");
 
-        println!("v{:?}", self.version);
+            println!("v{:?}", self.version);
 
-        let tmp_archive_dir = tempfile::TempDir::new().map_err(UpdaterError::IoError)?;
-        let archive_name = "client-gui.xz";
-        let archive = tmp_archive_dir.path().join(archive_name);
+            let tmp_archive_dir = tempfile::TempDir::new().map_err(UpdaterError::IoError)?;
+            let archive_name = "client-gui.xz";
+            let archive = tmp_archive_dir.path().join(archive_name);
 
-        println!("Downloading...");
+            println!("Downloading...");
 
-        let resp = self.agent.get(&self.target.url).call()?;
-        let resp = resp.into_reader();
-        let mut out = File::create(&archive)?;
+            let resp = self.agent.get(&self.target.url).call()?;
+            let resp = resp.into_reader();
+            let mut out = File::create(&archive)?;
 
-        let mut hash = Context::new(&SHA512);
-        let mut src = BufReader::new(resp);
-        loop {
-            let n = {
-                let buf = src.fill_buf().map_err(UpdaterError::IoError)?;
-                hash.update(buf);
-                out.write_all(buf).map_err(UpdaterError::IoError)?;
-                buf.len()
-            };
-            if n == 0 {
-                break;
+            let mut hash = Context::new(&SHA512);
+            let mut src = BufReader::new(resp);
+            loop {
+                let n = {
+                    let buf = src.fill_buf().map_err(UpdaterError::IoError)?;
+                    hash.update(buf);
+                    out.write_all(buf).map_err(UpdaterError::IoError)?;
+                    buf.len()
+                };
+                if n == 0 {
+                    break;
+                }
+                src.consume(n);
             }
-            src.consume(n);
+            let hash = hash.finish();
+
+            println!("Downloaded to: {:?}", archive);
+
+            verify_signature(
+                hash.as_ref(),
+                self.version.as_ref(),
+                self.target.signature.as_str(),
+            )?;
+
+            println!("Extracting archive... ");
+            let exe_name = "client-gui";
+            let exe_name = format!("{}{}", exe_name.trim_end_matches(EXE_SUFFIX), EXE_SUFFIX);
+            let new_exe = tmp_archive_dir.path().join(&exe_name);
+
+            decompress(archive.as_path(), &new_exe)?;
+
+            println!("Done");
+            println!("Replacing binary file... ");
+            self_replace::self_replace(new_exe).map_err(UpdaterError::ReplaceFailed)?;
+            println!("Done");
+
+            Ok(())
+        };
+
+        let res = update();
+        if let Err(err) = &res {
+            report_update_error(self.agent.clone(), err, &self.version);
         }
-        let hash = hash.finish();
 
-        println!("Downloaded to: {:?}", archive);
-
-        verify_signature(
-            hash.as_ref(),
-            self.version.as_ref(),
-            self.target.signature.as_str(),
-        )?;
-
-        println!("Extracting archive... ");
-        let exe_name = "client-gui";
-        let exe_name = format!("{}{}", exe_name.trim_end_matches(EXE_SUFFIX), EXE_SUFFIX);
-        let new_exe = tmp_archive_dir.path().join(&exe_name);
-
-        decompress(archive.as_path(), &new_exe)?;
-
-        println!("Done");
-        println!("Replacing binary file... ");
-        self_replace::self_replace(new_exe).map_err(UpdaterError::ReplaceFailed)?;
-        println!("Done");
-
-        Ok(())
+        res
     }
     pub fn restart(&self) -> Result<(), UpdaterError> {
-        let current_exe = match env::current_exe() {
-            Ok(exe) => exe,
-            Err(e) => return Err(UpdaterError::RestartFailed(e)),
+        let restart = || -> Result<(), UpdaterError> {
+            let current_exe = match env::current_exe() {
+                Ok(exe) => exe,
+                Err(e) => return Err(UpdaterError::RestartFailed(e)),
+            };
+            println!("Restarting process: {:?}", current_exe);
+            #[allow(clippy::useless_conversion)]
+            let e =
+                exec(process::Command::new(current_exe).args(std::env::args().into_iter().skip(1)));
+            // should never be called
+            Err(UpdaterError::RestartFailed(e))
         };
-        println!("Restarting process: {:?}", current_exe);
-        #[allow(clippy::useless_conversion)]
-        let e = exec(process::Command::new(current_exe).args(std::env::args().into_iter().skip(1)));
-        // should never be called
-        Err(UpdaterError::RestartFailed(e))
+
+        let res = restart();
+        if let Err(err) = &res {
+            report_update_error(self.agent.clone(), err, &self.version);
+        }
+        res
     }
 }
