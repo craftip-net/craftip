@@ -1,4 +1,4 @@
-use crate::{UpdateState, CURRENT_VERSION};
+use crate::{UpdateState, CURRENT_VERSION, GIT_HASH};
 use eframe::egui::{Button, Color32, RichText, Ui, Widget};
 use std::thread;
 use tokio::sync::mpsc;
@@ -60,7 +60,13 @@ pub(crate) fn updater_no_consent(updater_tx: UnboundedSender<UpdateState>) {
 }
 
 pub(crate) fn updater_gui_headline(ui: &mut Ui, update_status: &mut UpdateState) {
-    ui.label(RichText::new(format!("v{}", CURRENT_VERSION)).small());
+    if ui
+        .label(RichText::new(format!("v{}", CURRENT_VERSION)).small())
+        .on_hover_text(GIT_HASH)
+        .clicked()
+    {
+        ui.ctx().copy_text(GIT_HASH.into());
+    }
     match update_status {
         UpdateState::Error(e) => {
             ui.colored_label(Color32::RED, format!("Updater: {e}"))

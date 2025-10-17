@@ -26,6 +26,7 @@ use updater::updater::UpdateInfo;
 use updater::updater_proto::UpdaterError;
 
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const GIT_HASH: &str = env!("GIT_HASH");
 
 #[derive(Debug)]
 pub enum UpdateState {
