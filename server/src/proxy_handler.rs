@@ -304,7 +304,7 @@ impl ProxyClient<NotAuthenticated> {
                     Some(Ok(SocketPacket::ProxyAuthResponse(signature))) => signature,
                     e => {
                         let addr = self.state.framed.get_ref().peer_addr();
-                        tracing::error!("Client (addr: {addr}) trying to authenticate for {} did follow the auth procedure: {e}", self.hostname, e);
+                        tracing::error!("Client (addr: {addr}) trying to authenticate for {} did follow the auth procedure: {:?}", self.hostname, e);
                         let e = SocketPacket::ProxyError(
                             "Client did follow the auth procedure".to_string(),
                         );
