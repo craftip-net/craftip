@@ -20,6 +20,7 @@ use shared::packet_codec::PacketCodec;
 use shared::proxy::{
     ProxyAuthenticator, ProxyConnectedResponse, ProxyDataPacket, ProxyHelloPacket,
 };
+use shared::socket_packet;
 use shared::socket_packet::{ClientID, PingPacket, SocketPacket};
 
 use crate::register::Register;
@@ -173,9 +174,9 @@ impl ProxyClient<Authenticated> {
 
         let reader = task::spawn(ProxyClient::handle_reader(reader, distributor.clone(), tx));
         let writer = task::spawn(ProxyClient::handle_writer(writer, distributor.clone(), rx));
-        let _res = select(reader, writer).await;
-        // terminate the other task?
-        //res.factor_second().1.abort();
+        let res = select(reader, writer).await;
+        // terminate the other task
+        res.factor_second().1.abort();
 
         tracing::info!(
             "removing proxy client {} from state. Connection time: {:?}",
@@ -237,12 +238,14 @@ impl ProxyClient<Authenticated> {
         mut rx: UnboundedReceiver<ClientToProxy>,
     ) {
         loop {
-            // proxy disconnected and dropped tx
-            let Some(mut result) = rx.recv().await else {
+            let Some(mut packet) = rx.recv().await else {
+                tracing::error!("ClientToProxy channel was dropped");
                 break;
             };
-            'inner: loop {
-                let socket_packet = match result {
+
+            // Makes sure that the rx channel gets drained so that write doesn't block this process
+            'feed: loop {
+                let resp = match packet {
                     ClientToProxy::AddMinecraftClient(id_sender, tx) => {
                         let Ok(client_id) = distributor.lock().await.insert(tx) else {
                             tracing::error!("could not get client id (Too many clients?)");
@@ -252,37 +255,42 @@ impl ProxyClient<Authenticated> {
                             tracing::error!("Could not send back client ID {e:?}");
                             return;
                         }
-                        SocketPacket::ProxyJoin(client_id as ClientID)
+                        Some(SocketPacket::ProxyJoin(client_id as ClientID))
                     }
                     ClientToProxy::Packet(id, pkg) => {
                         // if client not found, close connection
-                        SocketPacket::from(ProxyDataPacket::new(pkg, id as ClientID))
+                        Some(SocketPacket::from(ProxyDataPacket::new(
+                            pkg,
+                            id as ClientID,
+                        )))
                     }
-                    ClientToProxy::AnswerPingPacket(ping) => SocketPacket::ProxyPong(ping),
+                    ClientToProxy::AnswerPingPacket(ping) => Some(SocketPacket::ProxyPong(ping)),
                     ClientToProxy::RemoveMinecraftClient(id) => {
                         if distributor.lock().await.remove_by_id(id) {
-                            if let Err(e) = writer.send(SocketPacket::ProxyDisconnect(id)).await {
-                                tracing::info!("Could not write ProxyDisconnect to socket {e:?}");
-                                return;
-                            }
+                            Some(SocketPacket::ProxyDisconnect(id))
+                        } else {
+                            // If not present anymore, it has already been removed. We don't want infinite acks
+                            None
                         }
-
-                        break 'inner;
                     }
                 };
-                if let Ok(pkg_next) = rx.try_recv() {
-                    if let Err(e) = writer.feed(socket_packet).await {
-                        tracing::debug!("Could not feed to socket {e:?}");
+
+                if let Some(packet) = resp {
+                    if let Err(e) = writer.feed(packet).await {
+                        tracing::info!("Could not feed to socket {e:?}");
                         return;
                     };
-                    result = pkg_next;
-                } else {
-                    if let Err(e) = writer.send(socket_packet).await {
-                        tracing::debug!("Could not write to socket {e:?}");
-                        return;
-                    }
-                    break 'inner;
                 }
+
+                match rx.try_recv() {
+                    Ok(res) => packet = res,
+                    Err(_) => break 'feed,
+                }
+            }
+
+            if let Err(e) = &mut writer.flush().await {
+                tracing::info!("Could not flush socket: {}", e);
+                return;
             }
         }
     }

@@ -43,7 +43,7 @@ impl ClientConnection {
             .context(format!("could not connect to {}", &self.mc_server))?;
         mc_server.set_nodelay(true)?;
         loop {
-            let mut buf = BytesMut::with_capacity(2048);
+            let mut buf = BytesMut::with_capacity(16 * 1024);
             tokio::select! {
                 pkg = self.client_rx.recv() => {
                     //tracing::info!("Sending packet to client: {:?}", pkg);

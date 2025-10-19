@@ -2,7 +2,7 @@ use futures::future::select;
 use std::io;
 use std::net::SocketAddr;
 use std::time::Duration;
-use tokio_util::bytes::BytesMut;
+use tokio_util::bytes::{BufMut, BytesMut};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
@@ -153,11 +153,19 @@ impl MCClient {
         mut rx: UnboundedReceiver<MinecraftDataPacket>,
         mut writer: OwnedWriteHalf,
     ) {
+        let mut buf = BytesMut::new();
         while let Some(pkg) = rx.recv().await {
-            if let Err(e) = writer.write_all(pkg.as_ref()).await {
+            buf.put(pkg.0);
+
+            while let Ok(pkg) = rx.try_recv() {
+                buf.put(pkg.0);
+            }
+
+            if let Err(e) = writer.write_all(buf.as_ref()).await {
                 tracing::debug!("write_all failed {e:?}");
                 return;
             }
+            buf.clear();
         }
     }
     /// HANDLE MC CLIENT
@@ -169,7 +177,8 @@ impl MCClient {
         let reader = tokio::spawn(Self::client_reader(reader, self.proxy_tx.clone(), self.id));
         let writer = tokio::spawn(Self::client_writer(rx, writer));
 
-        let _res = select(reader, writer).await;
+        let res = select(reader, writer).await;
+        res.factor_second().1.abort();
 
         tracing::info!(
             "Minecraft client {} disconnected after {:?} from {}",

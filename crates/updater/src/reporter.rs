@@ -1,7 +1,6 @@
 use crate::config::UPDATE_ERROR_REPORT_URL;
 use crate::updater_proto::UpdaterError;
 use serde::{Deserialize, Serialize};
-use std::fmt::format;
 use ureq::Agent;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
