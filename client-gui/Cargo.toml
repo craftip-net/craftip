@@ -20,7 +20,7 @@ anyhow = { workspace = true }
 tracing-subscriber = "0.3.18"
 
 
-eframe = { version = "0.32", default-features = false, features = [
+eframe = { version = "0.33.0", default-features = false, features = [
     "accesskit", # Make egui compatible with screen readers. NOTE: adds a lot of dependencies.
     "default_fonts", # Embed the default egui fonts.
     "wgpu", # Use the glow rendering backend. Alternative: "wgpu".
@@ -28,8 +28,8 @@ eframe = { version = "0.32", default-features = false, features = [
     "wayland", # To support Linux (and CI)
     "x11", # To support older Linux distributions (restores one of the default features)
 ] }
-wgpu = { version = "25" }
-egui = "0.32"
+wgpu = { version = "27.0.1" }
+egui = "0.33.0"
 image = { version = "0.25.6", default-features = false, features = ["png"] }
 ehttp = { version = "0.5.0", features = ["json"] }
 poll-promise = "0.3.0"
