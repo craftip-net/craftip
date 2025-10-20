@@ -10,8 +10,6 @@
 	<string>net.craftip</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
-	<key>LSUIElement</key>
-	<true/>
 	<key>NSHumanReadableCopyright</key>
     <string></string>
 </dict>
