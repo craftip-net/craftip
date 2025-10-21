@@ -2,9 +2,9 @@ use futures::future::select;
 use std::io;
 use std::net::SocketAddr;
 use std::time::Duration;
-use tokio_util::bytes::{BufMut, BytesMut};
+use tokio_util::bytes::BytesMut;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
@@ -149,23 +149,25 @@ impl MCClient {
         }
     }
 
-    async fn client_writer(
-        mut rx: UnboundedReceiver<MinecraftDataPacket>,
-        mut writer: OwnedWriteHalf,
-    ) {
-        let mut buf = BytesMut::new();
+    async fn client_writer(mut rx: UnboundedReceiver<MinecraftDataPacket>, writer: OwnedWriteHalf) {
+        let mut writer = BufWriter::with_capacity(64 * 1024, writer);
         while let Some(pkg) = rx.recv().await {
-            buf.put(pkg.0);
-
-            while let Ok(pkg) = rx.try_recv() {
-                buf.put(pkg.0);
-            }
-
-            if let Err(e) = writer.write_all(buf.as_ref()).await {
-                tracing::debug!("write_all failed {e:?}");
+            if let Err(e) = writer.write_all(pkg.as_ref()).await {
+                tracing::warn!("write_all failed {e:?}");
                 return;
             }
-            buf.clear();
+
+            // check if channel still containes data, and add it to the send buffer as well
+            while let Ok(pkg) = rx.try_recv() {
+                if let Err(e) = writer.write_all(pkg.as_ref()).await {
+                    tracing::warn!("write_all failed {e:?}");
+                    return;
+                }
+            }
+
+            if let Err(e) = writer.flush().await {
+                tracing::warn!("flushing failed {e:?}");
+            }
         }
     }
     /// HANDLE MC CLIENT
@@ -199,7 +201,7 @@ impl MCClient {
 pub(crate) async fn first_minecraft_packet(
     socket: &mut TcpStream,
 ) -> Result<(MinecraftHelloPacket, MinecraftDataPacket), io::Error> {
-    let mut buf = BytesMut::new();
+    let mut buf = BytesMut::with_capacity(2 * 1024);
     loop {
         socket.read_buf(&mut buf).await?;
         if let Ok(Some(packet)) = MinecraftHelloPacket::new(&mut buf.clone()) {
