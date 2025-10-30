@@ -2,9 +2,10 @@ FROM rust:1-slim-trixie AS chef
 # We only pay the installation cost once,
 # it will be cached from the second build onwards
 RUN groupadd -r craftip && useradd -r -g craftip craftip
+RUN mkdir -p /app && chown craftip:craftip /app
 USER craftip
+WORKDIR /app
 RUN cargo install cargo-chef --locked
-WORKDIR app
 
 FROM chef AS planner
 COPY . .
