@@ -1,25 +1,27 @@
-FROM rust:1.82-alpine3.20 as builder
-RUN apk update && apk add musl-dev
-#RUN useradd -d /craftip -s /bin/bash -u 1001 craftip
-RUN addgroup -S craftip && adduser -S craftip -G craftip
-WORKDIR /craftip
-
-RUN chown -R craftip:craftip /craftip
+FROM rust:1-slim-trixie AS chef
+# We only pay the installation cost once,
+# it will be cached from the second build onwards
+RUN groupadd -r craftip && useradd -r -g craftip craftip
 USER craftip
+RUN cargo install cargo-chef --locked
+WORKDIR app
 
-COPY Cargo.toml .
-COPY Cargo.lock .
-COPY crates/ ./crates/
-COPY server/ ./server/
-COPY client-gui/ ./client-gui/
-COPY util ./util
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
 
-WORKDIR /craftip/server
-RUN RUSTFLAGS=-g cargo build --release
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+# Build dependencies - this is the caching Docker layer!
+RUN cargo chef cook --release --bin server --recipe-path recipe.json
+# Build application
+COPY . .
+RUN cargo build --release --bin server
 
-
-FROM alpine:3.20
-RUN addgroup -S craftip && adduser -S craftip -G craftip
+# We do not need the Rust toolchain to run the binary!
+FROM debian:trixie-slim AS runtime
+#RUN addgroup -S craftip && adduser -S craftip -G craftip
+RUN groupadd -r craftip && useradd -r -g craftip craftip
 USER craftip
-COPY --from=builder /craftip/target/release/server /usr/local/bin/server
+COPY --from=builder /app/target/release/server /usr/local/bin/server
 CMD ["server"]
