@@ -61,7 +61,7 @@ pub(crate) async fn handle_minecraft_client(
             Duration::from_secs(TIMEOUT_IN_SEC),
             handle_mc_disconnect(packet, packet_data, &mut socket),
         )
-        .await;
+            .await;
         return Ok(());
     };
 

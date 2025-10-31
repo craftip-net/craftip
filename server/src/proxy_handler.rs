@@ -20,7 +20,6 @@ use shared::packet_codec::PacketCodec;
 use shared::proxy::{
     ProxyAuthenticator, ProxyConnectedResponse, ProxyDataPacket, ProxyHelloPacket,
 };
-use shared::socket_packet;
 use shared::socket_packet::{ClientID, PingPacket, SocketPacket};
 
 use crate::register::Register;
