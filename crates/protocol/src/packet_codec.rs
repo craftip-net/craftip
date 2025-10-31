@@ -63,9 +63,8 @@ impl Encoder<Bytes> for PacketCodec {
 impl Encoder<SocketPacket> for PacketCodec {
     type Error = io::Error;
 
-    fn encode(&mut self, pkg: SocketPacket, buf: &mut BytesMut) -> Result<(), io::Error> {
-        pkg.encode_into(buf)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    fn encode(&mut self, pkg: SocketPacket, buf: &mut BytesMut) -> Result<(), Self::Error> {
+        pkg.encode_into(buf).map_err(io::Error::other)?;
         Ok(())
     }
 }
