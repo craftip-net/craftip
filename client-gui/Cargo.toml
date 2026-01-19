@@ -17,7 +17,7 @@ serde_json = { workspace = true }
 bincode = { workspace = true }
 anyhow = { workspace = true }
 
-tracing-subscriber = "0.3.18"
+tracing-subscriber = "0.3.22"
 
 
 eframe = { version = "0.33.3", default-features = false, features = [
