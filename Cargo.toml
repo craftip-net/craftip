@@ -30,5 +30,5 @@ anyhow = "1.0.100"
 base64 = "0.22.1"
 ring = "0.17.14"
 liblzma = { version = "0.3.4", features = ["static"] }
-ureq = { version = "2.10.1", default-features = false, features = ["json", "tls"] }
+ureq = { version = "2", default-features = false, features = ["json", "tls"] }
 
