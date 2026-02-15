@@ -1,13 +1,13 @@
 use crate::config;
 use ring::rand::SecureRandom;
-use ring::signature::KeyPair;
-use ring::{digest, rand, signature};
+use ring::signature::{KeyPair, ED25519_PUBLIC_KEY_LEN};
+use ring::{rand, signature};
 use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
 use std::fmt;
 use thiserror::Error;
 
-const BASE36_ENCODER_STRING: &str = "0123456789abcdefghijklmnopqrstuvwxyz";
+pub(crate) const BASE36_ENCODER_STRING: &str = "0123456789abcdefghijklmnopqrstuvwxyz";
 const PREFIX: &str = "CraftIPServerHost";
 const HOSTNAME_LENGTH: usize = 20;
 
@@ -22,7 +22,7 @@ pub struct ServerPrivateKey {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ServerPublicKey {
-    key: [u8; 32],
+    key: [u8; ED25519_PUBLIC_KEY_LEN],
 }
 fn create_challenge(data: &[u8]) -> Vec<u8> {
     [PREFIX.as_bytes(), data].concat()
@@ -96,16 +96,23 @@ pub enum CryptoError {
     CryptoFailed,
 }
 impl ServerPublicKey {
-    pub fn get_host(&self) -> String {
-        let checksum = &[PREFIX.as_bytes(), self.key.as_ref()].concat();
-        let checksum = digest::digest(&digest::SHA256, checksum);
-        let checksum = base_x::encode(BASE36_ENCODER_STRING, checksum.as_ref());
-        checksum[0..HOSTNAME_LENGTH].to_string()
+    fn get_host(&self) -> String {
+        let mut checksum = [0u8; PREFIX.len() + ED25519_PUBLIC_KEY_LEN];
+        {
+            let (prefix, pubkey) = checksum.split_at_mut(PREFIX.len());
+            prefix.copy_from_slice(PREFIX.as_bytes());
+            pubkey.copy_from_slice(self.key.as_ref());
+        }
+        let mut checksum = base_x::encode(BASE36_ENCODER_STRING, &checksum);
+        checksum.truncate(HOSTNAME_LENGTH);
+        checksum
     }
     pub fn get_hostname(&self) -> String {
-        format!("{}{}", self.get_host(), config::KEY_SERVER_SUFFIX)
+        let mut hostname = self.get_host();
+        hostname.push_str(config::KEY_SERVER_SUFFIX);
+        hostname
     }
-    pub fn create_challange(&self) -> Result<ChallengeDataType, CryptoError> {
+    pub fn create_challenge(&self) -> Result<ChallengeDataType, CryptoError> {
         let rng = rand::SystemRandom::new();
         let mut result = [0u8; 64];
         rng.fill(&mut result)
@@ -148,7 +155,7 @@ mod tests {
     fn test_signature() {
         let private = ServerPrivateKey::default();
         let public = private.get_public_key();
-        let challenge = public.create_challange().unwrap();
+        let challenge = public.create_challenge().unwrap();
         let signature = private.sign(&challenge);
         assert!(public.verify(&challenge, &signature));
     }
@@ -156,7 +163,7 @@ mod tests {
     fn test_signature_invalid() {
         let private = ServerPrivateKey::default();
         let public = private.get_public_key();
-        let challenge = public.create_challange().unwrap();
+        let challenge = public.create_challenge().unwrap();
         let mut signature = private.sign(&challenge);
         signature[0] = 1;
         assert!(!public.verify(&challenge, &signature));

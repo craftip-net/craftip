@@ -71,9 +71,9 @@ pub enum ServerAuthentication {
 pub const STANDARD_LOCAL_PORT: &str = "25565";
 impl Server {
     pub fn new_from_key(key: ServerPrivateKey) -> Self {
-        let id = key.get_public_key().get_host();
+        let server = key.get_public_key().get_hostname();
         Self {
-            server: format!("{}{}", id, shared::config::KEY_SERVER_SUFFIX),
+            server,
             local: STANDARD_LOCAL_PORT.to_string(),
             auth: ServerAuthentication::Key(key),
         }
