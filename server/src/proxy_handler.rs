@@ -299,7 +299,7 @@ impl ProxyClient<NotAuthenticated> {
     pub async fn authenticate(mut self) -> Result<ProxyClient<Authenticated>, DistributorError> {
         match &self.state.hello.auth {
             ProxyAuthenticator::PublicKey(public_key) => {
-                let challenge = public_key.create_challange().map_err(|e| {
+                let challenge = public_key.create_challenge().map_err(|e| {
                     tracing::error!("Could not create auth challenge: {:?}", e);
                     DistributorError::AuthError
                 })?;
