@@ -7,7 +7,7 @@ jobs:
       matrix:
         arch: [ x86_64, aarch64 ]
     name: ${{ matrix.arch }}-mac
-    runs-on: macos-13
+    runs-on: macos-14
     steps:
       - run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y
       - name: Add architecture ${{ matrix.arch }}
@@ -54,7 +54,7 @@ jobs:
   universal-binary:
     name: Build DMG
     needs: [ build-macos, build-windows ]
-    runs-on: macos-13
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
       - name: Download x86_64
