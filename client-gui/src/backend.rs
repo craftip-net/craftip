@@ -75,7 +75,7 @@ impl Controller {
                             }
 
 
-                            let client = Client::new(server, stats_tx.clone());
+                            let client = Client::new(server, Some(stats_tx.clone()));
                             let state = self.state.clone();
 
                             connection_task = Some(tokio::spawn(connection_loop(client, state.clone())));

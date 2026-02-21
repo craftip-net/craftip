@@ -1,7 +1,7 @@
 use crate::config;
 use ring::rand::SecureRandom;
 use ring::signature::{KeyPair, ED25519_PUBLIC_KEY_LEN};
-use ring::{rand, signature};
+use ring::{digest, rand, signature};
 use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
 use std::fmt;
@@ -14,10 +14,10 @@ const HOSTNAME_LENGTH: usize = 20;
 pub type ChallengeDataType = [u8; 64];
 pub type SignatureDataType = [u8; 64];
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ServerPrivateKey {
     #[serde(with = "BigArray")]
-    key: [u8; 83],
+    pub key: [u8; 83],
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
@@ -103,7 +103,8 @@ impl ServerPublicKey {
             prefix.copy_from_slice(PREFIX.as_bytes());
             pubkey.copy_from_slice(self.key.as_ref());
         }
-        let mut checksum = base_x::encode(BASE36_ENCODER_STRING, &checksum);
+        let checksum = digest::digest(&digest::SHA256, checksum.as_slice());
+        let mut checksum = base_x::encode(BASE36_ENCODER_STRING, checksum.as_ref());
         checksum.truncate(HOSTNAME_LENGTH);
         checksum
     }

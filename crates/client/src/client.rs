@@ -3,9 +3,9 @@ use std::mem::size_of;
 use std::ops::{Add, Sub};
 
 use anyhow::{bail, Result};
-use futures::{StreamExt, SinkExt};
-use tokio::io::AsyncWriteExt;
+use futures::{SinkExt, StreamExt};
 use shared::addressing::DistributorError;
+use tokio::io::AsyncWriteExt;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
@@ -29,7 +29,10 @@ pub struct Client {
     connections: [Option<ProxyToClientTx>; MAXIMUM_CLIENTS],
     connections_len: usize,
     stats_tx: Option<StatsTx>,
-    proxy: Option<(FramedRead<OwnedReadHalf, PacketCodec>, FramedWrite<OwnedWriteHalf, PacketCodec>)>,
+    proxy: Option<(
+        FramedRead<OwnedReadHalf, PacketCodec>,
+        FramedWrite<OwnedWriteHalf, PacketCodec>,
+    )>,
     server: Server,
 }
 
@@ -72,13 +75,13 @@ impl Client {
 }
 
 impl Client {
-    pub fn new(server: Server, stats_tx: StatsTx) -> Self {
+    pub fn new(server: Server, stats_tx: Option<StatsTx>) -> Self {
         const CONNECTION_NONE: Option<ProxyToClientTx> = None;
         Client {
             connections: [CONNECTION_NONE; MAXIMUM_CLIENTS],
             connections_len: 0,
             server,
-            stats_tx: Some(stats_tx),
+            stats_tx,
             proxy: None,
         }
     }
@@ -209,7 +212,9 @@ impl Client {
 
             match pkg {
                 ClientToProxy::Packet(id, pkg) => {
-                    writer.feed(SocketPacket::from(ProxyDataPacket::new(pkg, id))).await?
+                    writer
+                        .feed(SocketPacket::from(ProxyDataPacket::new(pkg, id)))
+                        .await?
                 }
                 ClientToProxy::RemoveMinecraftClient(id) => {
                     if let Err(e) = disconnect_tx.send(id) {

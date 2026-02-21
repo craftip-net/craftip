@@ -1,9 +1,8 @@
 use anyhow::Result;
 use client::client::Client;
-use client::structs::{Server, ServerAuthentication};
+use client::structs::Server;
 use shared::crypto::ServerPrivateKey;
 use std::{env, fs};
-use tokio::sync::mpsc;
 
 #[tokio::main]
 pub async fn main() -> Result<()> {
@@ -22,21 +21,20 @@ pub async fn main() -> Result<()> {
 
     let private_key = load_private_key();
 
-    let server = env::args().nth(1).unwrap_or_else(|| {
+    let local = env::args().nth(1).unwrap_or_else(|| {
         tracing::info!("Using standard localhost:25565...");
         "localhost:25565".to_string()
     });
 
-    let server = Server {
-        server: private_key.get_public_key().get_hostname(),
-        local: server,
-        auth: ServerAuthentication::Key(private_key),
-    };
+    let mut server = Server::new_from_key(private_key);
+    server.local = local;
     tracing::info!("Connecting to server: {}", server.server);
 
-    let (stats_tx, mut _stats_rx) = mpsc::unbounded_channel();
 
-    let mut client = Client::new(server, stats_tx);
+    //let pool = ClientPool::new(server.clone());
+    //pool.connect().await;
+
+    let mut client = Client::new(server, None);
     // connect
     match client.connect().await {
         Ok(_) => {
@@ -50,7 +48,6 @@ pub async fn main() -> Result<()> {
 
     // handle handle connection if connection was successful
     tracing::info!("Handling connection...");
-    println!("{:?} ms", client.ping().await);
     client.auth().await.unwrap();
     client.handle().await.unwrap();
 
